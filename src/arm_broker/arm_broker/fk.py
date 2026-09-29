@@ -114,15 +114,11 @@ def fk(q):
     """Calcula la posición cartesiana (x,y,z) del efector final
     Entrada: q = q[q1,q2,q3,q4,q5,q6] en radianes rad
     Salida: (x,y,z) en milimetros mm 
-    Parameters
-    ----------
-    q : iterable de 6 floats
-        Ángulos articulares en radianes.
-
-    Returns
-    -------
-    tuple
-        (x, y, z) en milímetros.
+    La posicion se obtiene de la ultima columna de T_0_6
+        |R00 R01 R02 x|
+        |R10 R11 R12 y|
+    T = |R20 R21 R22 z|
+        | 0   0   0  1|
     """
     T = fk_matriz(q)
 
@@ -132,9 +128,9 @@ def fk(q):
 
     return x, y, z
 
-
+# 9.Validacion de limites articulares
 def dentro_de_limites(q):
-    """Comprueba que las seis articulaciones estén dentro de sus límites."""
+    """Se comprueba que las seis articulaciones estén dentro de sus límites"""
     if len(q) != 6:
         return False, f'se esperaban 6 ángulos, llegaron {len(q)}'
 
@@ -146,11 +142,12 @@ def dentro_de_limites(q):
                 f'{valor:.3f} rad, límite [{lo}, {hi}]'
             )
 
-    return True, ''
+    return True, "
 
-
+# 10. Validacion Simple del Workspace
 def dentro_del_workspace(q):
-    """Filtro básico del workspace usando la posición calculada por FK."""
+    """Uso de filtro básico del workspace usando la posición calculada por FK."""
+    """Se calcula r = sqrt(x²+y²+z²) y se rechaza si r > alcance_maximo o r < alcance_minimo o z < 0 """
     x, y, z = fk(q)
     r = math.sqrt(x * x + y * y + z * z)
 
@@ -169,9 +166,9 @@ def dentro_del_workspace(q):
 
     return True, ''
 
-
+# 11.Paso Articular Maximo
 def paso_articular(q_desde, q_hasta):
-    """Máxima variación articular entre dos configuraciones, en radianes."""
+    """Calculo de la máxima variación articular entre dos configuraciones, en radianes."""
     if len(q_desde) != 6 or len(q_hasta) != 6:
         raise ValueError('paso_articular requiere dos vectores de 6 articulaciones')
 
