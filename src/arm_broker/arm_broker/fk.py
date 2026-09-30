@@ -97,15 +97,15 @@ def fk_matriz(q):
     T = [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
-        [1.0, 0.0, 1.0, 0.0],
-        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 
     # Se hace el recorrido de cada fila DH junto al angulo articular correspondiente
     for (alpha, a, d, offset), theta in zip(DH, q):
-        theta_dh = theta + offset """El angulo usado por DH incluye el offset geometrico"""
-        A_i = _t(alpha, a, d, theta_dh) """Matriz Individual A_1"""
-        T = _mul(T, A_i) """Acumulacion: T = A1, T = A1*A2,  T= A1*A2*A3, ..."""
+        theta_dh = theta + offset #El angulo usado por DH incluye el offset geometrico
+        A_i = _t(alpha, a, d, theta_dh) #Matriz Individual A_1
+        T = _mul(T, A_i) #Acumulacion: T = A1, T = A1*A2,  T= A1*A2*A3, ...
 
     return T
 
@@ -142,7 +142,7 @@ def dentro_de_limites(q):
                 f'{valor:.3f} rad, límite [{lo}, {hi}]'
             )
 
-    return True, "
+    return True, ''
 
 # 10. Validacion Simple del Workspace
 def dentro_del_workspace(q):
