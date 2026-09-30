@@ -4,6 +4,9 @@ Andamiaje entregado por el curso. Los bloques IMPLEMENTAR son lo que evalúa el
 reto; el resto es instrumentación y se usa tal cual.
 """
 
+import csv
+import math
+import os
 import threading
 import time
 
@@ -27,30 +30,28 @@ class ArmBroker(Node):
         super().__init__('arm_broker')
 
         self.declare_parameter('politica', 'fifo')
-        self.declare_parameter('tau_envejecimiento_s', 8.0)
         self.declare_parameter('cola_max', 20)
         self.declare_parameter('paso_max_rad', 1.2)
         self.declare_parameter('duracion_movimiento_s', 3.0)
         self.declare_parameter('pasos_interpolacion', 10)
+        self.declare_parameter('archivo_rechazos', 'rechazos.csv')
 
         nombre = self.get_parameter('politica').value
         if nombre not in POLITICAS:
             raise RuntimeError(f'política desconocida: {nombre}. Hay {list(POLITICAS)}')
-        clase = POLITICAS[nombre]
-        if nombre == 'prioridad':
-            self.politica = clase(self.get_parameter('tau_envejecimiento_s').value)
-        else:
-            self.politica = clase()
+        self.politica = POLITICAS[nombre]()
 
         self.cola_max = int(self.get_parameter('cola_max').value)
         self.paso_max = float(self.get_parameter('paso_max_rad').value)
         self.duracion = float(self.get_parameter('duracion_movimiento_s').value)
         self.pasos = max(1, int(self.get_parameter('pasos_interpolacion').value))
+        self.archivo_rechazos = str(self.get_parameter('archivo_rechazos').value)
 
         self.grupo_entrada = ReentrantCallbackGroup()
         self.grupo_worker = MutuallyExclusiveCallbackGroup()
 
         self.lock = threading.Lock()
+        self.lock_rechazos = threading.Lock()   # solo para el CSV de rechazos
         self.pendientes = []
         self.por_goal_id = {}
         self.ejecutando = None
@@ -88,53 +89,221 @@ class ArmBroker(Node):
     def goal_callback(self, goal_request):
         """Admisión. Barata e inmediata: acepta o rechaza, nunca ejecuta.
 
-        Rechacen con motivo explícito si el objetivo está fuera de límites
+        Rechaza con motivo explícito si el objetivo está fuera de límites
         articulares, fuera del workspace, o si el paso articular desde
-        self.q_actual es mayor que self.paso_max. Usen fk.dentro_de_limites,
-        fk.dentro_del_workspace y fk.paso_articular.
-
-        Lleven la cuenta en self.n_aceptados y self.n_rechazados.
-        Devuelve GoalResponse.ACCEPT o GoalResponse.REJECT.
+        self.q_actual es mayor que self.paso_max (o si la cola está llena).
+        No espera al brazo ni toca /joint_states: solo hace cuentas con fk.py.
         """
-        raise NotImplementedError('Admisión validada con FK')
+        q = list(goal_request.joint_positions)
+        cliente = goal_request.client_id or '?'
+
+        causa, motivo = self._validar(q)
+
+        if causa is None:
+            with self.lock:
+                self.n_aceptados += 1
+            return GoalResponse.ACCEPT
+
+        with self.lock:
+            self.n_rechazados += 1
+        self.get_logger().warn(
+            f'RECHAZADO [{cliente} p{goal_request.priority}] ({causa}): {motivo}')
+        self._registrar_rechazo(goal_request, causa, motivo)
+        return GoalResponse.REJECT
+
+    def _validar(self, q):
+        """Devuelve (None, '') si el objetivo es admisible, o (causa, motivo)."""
+        if any(not math.isfinite(v) for v in q):
+            return 'limite', 'el objetivo contiene valores no numéricos (NaN/inf)'
+
+        # dentro_de_limites también cubre que lleguen exactamente 6 ángulos, y debe
+        # ir primero: la FK del workspace exige 6 articulaciones.
+        ok, motivo = fk.dentro_de_limites(q)
+        if not ok:
+            return 'limite', motivo
+
+        ok, motivo = fk.dentro_del_workspace(q)
+        if not ok:
+            return 'workspace', motivo
+
+        with self.lock:
+            q_desde = list(self.q_actual)
+        paso = fk.paso_articular(q_desde, q)
+        if paso > self.paso_max:
+            return 'paso', (
+                f'paso articular de {paso:.2f} rad desde la pose actual, '
+                f'máximo {self.paso_max:.2f}')
+
+        with self.lock:
+            llena = len(self.pendientes) >= self.cola_max
+        if llena:
+            return 'cola_llena', f'cola llena ({self.cola_max} pedidos pendientes)'
+
+        return None, ''
+
+    def _registrar_rechazo(self, goal_request, causa, motivo):
+        """Deja el rechazo en un CSV: evidencia del ítem 2 (todo rechazo lleva motivo)."""
+        if not self.archivo_rechazos:
+            return
+        try:
+            with self.lock_rechazos:
+                nuevo = not os.path.exists(self.archivo_rechazos)
+                with open(self.archivo_rechazos, 'a', newline='', encoding='utf-8') as f:
+                    w = csv.writer(f)
+                    if nuevo:
+                        w.writerow(['t_unix', 'client_id', 'priority', 'causa',
+                                    'motivo', 'joint_positions'])
+                    w.writerow([f'{time.time():.3f}', goal_request.client_id,
+                                goal_request.priority, causa, motivo,
+                                ' '.join(f'{v:.4f}' for v in goal_request.joint_positions)])
+        except OSError as e:
+            self.get_logger().error(f'no pude escribir {self.archivo_rechazos}: {e}')
 
     def handle_accepted_callback(self, goal_handle):
         """Encolar. AQUÍ NO SE EJECUTA NADA, y no se publica en /joint_states.
 
-        Construyan un Pedido y guárdenlo en self.pendientes bajo self.lock.
-        Indéxenlo también en self.por_goal_id, que el worker lo va a necesitar.
+        Crea el Pedido y lo deja en self.pendientes (e indexado por goal_id) bajo
+        self.lock. El worker es el único que decide cuándo le toca.
         """
-        raise NotImplementedError('Encolar')
+        goal = goal_handle.request
+        pedido = Pedido(goal_handle, goal.client_id, goal.priority, goal.joint_positions)
+        with self.lock:
+            self.pendientes.append(pedido)
+            self.por_goal_id[pedido.goal_id] = pedido
+        self.get_logger().info(
+            f'ENCOLADO {pedido!r} · pendientes={len(self.pendientes)}')
 
     def _worker(self):
         """El único que decide a quién le toca. Corre en su propio hilo.
 
-        En bucle, mientras no self._parar:
-          - si no hay nada ejecutándose y hay pendientes, pregunten a
-            self.politica.siguiente() cuál sigue y sáquenlo de la cola
-          - si venía cancelado, descártenlo
-          - si no, márquenlo en self.ejecutando, anoten t_inicio_ejec, y llamen
-            a goal_handle.execute()
-          - esperen a que termine con pedido.fin.wait() ANTES de sacar el
-            siguiente: ahí está la exclusión mutua
-          - al terminar, limpien self.ejecutando y avisen a la política con
-            self.politica.atendido(pedido)
+        Nunca hay dos pedidos en marcha: el siguiente solo se elige cuando
+        pedido.fin avisa que el anterior terminó. Esa espera es la exclusión mutua.
         """
-        raise NotImplementedError('Worker único: desencolar y ejecutar de a uno')
+        while not self._parar.is_set():
+            pedido = None
+            self._purgar_cancelados()
+            with self.lock:
+                if self.ejecutando is None and self.pendientes:
+                    indice = self.politica.siguiente(list(self.pendientes))
+                    if indice is not None:
+                        pedido = self.pendientes.pop(indice)
+                        self.ejecutando = pedido
+                        pedido.t_inicio_ejec = time.time()
+
+            if pedido is None:
+                self._parar.wait(0.02)
+                continue
+
+            try:
+                self._atender(pedido)
+            except Exception as e:  # el worker no puede morir: se caería el broker
+                self.get_logger().error(f'error atendiendo {pedido!r}: {e!r}')
+            finally:
+                with self.lock:
+                    self.por_goal_id.pop(pedido.goal_id, None)
+                    self.ejecutando = None
+                    if pedido.resultado is not None and pedido.resultado.success:
+                        self.n_completados += 1
+                self.politica.atendido(pedido)
+
+    def _purgar_cancelados(self):
+        """Saca de la cola los pedidos cancelados mientras esperaban (no mueven el brazo)."""
+        with self.lock:
+            cancelados = [p for p in self.pendientes if p.goal_handle.is_cancel_requested]
+            for p in cancelados:
+                self.pendientes.remove(p)
+                self.por_goal_id.pop(p.goal_id, None)
+        for p in cancelados:
+            p.goal_handle.canceled()
+            self.get_logger().info(f'DESCARTADO (cancelado en cola) {p!r}')
+
+    def _atender(self, pedido):
+        """Lanza un pedido y espera a que termine. Solo lo llama el worker."""
+        goal_handle = pedido.goal_handle
+
+        if goal_handle.is_cancel_requested:
+            # Lo cancelaron mientras esperaba en la cola: se descarta sin mover el brazo.
+            goal_handle.canceled()
+            self.get_logger().info(f'DESCARTADO (cancelado en cola) {pedido!r}')
+            return
+
+        self.get_logger().info(
+            f'EJECUTANDO {pedido!r} · esperó {pedido.espera_s:.2f}s')
+        goal_handle.execute()   # el executor corre execute_callback en otro hilo
+
+        # ANTES de sacar el siguiente: aquí está la exclusión mutua.
+        while not pedido.fin.wait(0.1):
+            if self._parar.is_set():
+                return
 
     def execute_callback(self, goal_handle):
-        """Ejecutar UN pedido. Lo llama el worker, nunca handle_accepted.
+        """Ejecutar UN pedido. Lo llama el worker (vía goal_handle.execute()), nunca handle_accepted.
 
-        Busquen el Pedido en self.por_goal_id por el id del goal. Interpolen
-        desde self.q_actual hasta el destino en self.pasos pasos, publicando
-        con self.mover() y mandando feedback en cada uno. Comprueben
-        goal_handle.is_cancel_requested en cada paso.
-
-        Terminen con goal_handle.succeed() y devuelvan el Result con
-        wait_time_s y exec_time_s. Pase lo que pase, pedido.fin.set() al final:
-        si no, el worker se queda esperando para siempre.
+        Interpola desde self.q_actual hasta el destino en self.pasos pasos,
+        publicando con self.mover() y mandando feedback en cada uno. Comprueba
+        cancelación en cada paso. Pase lo que pase, pedido.fin.set() al final.
         """
-        raise NotImplementedError('Ejecutar con feedback y cancelación')
+        goal_id = bytes(goal_handle.goal_id.uuid).hex()[:12]
+        with self.lock:
+            pedido = self.por_goal_id.get(goal_id)
+
+        resultado = MoveArm.Result()
+        if pedido is None:
+            goal_handle.abort()
+            resultado.success = False
+            resultado.message = 'el goal no estaba encolado en el broker'
+            return resultado
+
+        try:
+            with self.lock:
+                origen = list(self.q_actual)
+            destino = pedido.joint_positions
+            t_ini = pedido.t_inicio_ejec or time.time()
+            espera = t_ini - pedido.t_llegada
+            dt = self.duracion / self.pasos
+            cancelado = False
+
+            for k in range(1, self.pasos + 1):
+                if goal_handle.is_cancel_requested or self._parar.is_set():
+                    cancelado = True
+                    break
+
+                if k == self.pasos:
+                    q = list(destino)   # el último paso cae exactamente en el destino
+                else:
+                    f = k / self.pasos
+                    q = [a + (b - a) * f for a, b in zip(origen, destino)]
+                self.mover(q)
+
+                fb = MoveArm.Feedback()
+                fb.state = 'EXECUTING'
+                fb.queue_position = 0
+                fb.elapsed_s = time.time() - t_ini
+                goal_handle.publish_feedback(fb)
+
+                self._parar.wait(dt)
+
+            resultado.wait_time_s = float(espera)
+            resultado.exec_time_s = float(time.time() - t_ini)
+
+            if cancelado:
+                goal_handle.canceled()
+                resultado.success = False
+                resultado.message = 'cancelado durante la ejecución; el brazo quedó donde estaba'
+            else:
+                goal_handle.succeed()
+                resultado.success = True
+                resultado.message = 'ok'
+            return resultado
+        except Exception as e:
+            self.get_logger().error(f'fallo ejecutando {pedido!r}: {e!r}')
+            goal_handle.abort()
+            resultado.success = False
+            resultado.message = f'error en la ejecución: {e!r}'
+            return resultado
+        finally:
+            pedido.resultado = resultado
+            pedido.fin.set()   # si no, el worker se queda esperando para siempre
     # =========================================================================
 
     def cancel_callback(self, goal_handle):
