@@ -1,6 +1,5 @@
 """ Pruebas del broker y del cliente con ROS 2 SIMULADO — Ítem 2 del Reto 2 """
 
-"""No necesitan ROS 2 ni el robot: se sustituyen rclpy y las interfaces por dobles de prueba"""
 """El doble de ServerGoalHandle copia las reglas de rclpy (Humble) que importan aquí:
  - abort() y succeed() solo son válidos desde EXECUTING (o CANCELING)
  - canceled() solo es válido desde CANCELING
