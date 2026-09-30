@@ -692,6 +692,19 @@ class TestCliente(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'NaN o infinito'):
             self.cargar('0.1,0,0,0,0,nan\n')
 
+    def test_inicio_unix_espera_hasta_el_instante_indicado(self):
+        Node.PARAMS = {'inicio_unix': time.time() + 0.3}
+        t0 = time.time()
+        C.Cliente().esperar_inicio()
+        self.assertGreaterEqual(time.time() - t0, 0.25)
+
+    def test_inicio_unix_en_el_pasado_o_cero_no_espera(self):
+        for valor in (0.0, time.time() - 5):
+            Node.PARAMS = {'inicio_unix': valor}
+            t0 = time.time()
+            C.Cliente().esperar_inicio()
+            self.assertLess(time.time() - t0, 0.05)
+
     def test_modo_desconocido(self):
         Node.PARAMS = {'modo': 'rapido'}
         with self.assertRaisesRegex(ValueError, 'modo desconocido'):

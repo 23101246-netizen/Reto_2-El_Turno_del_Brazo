@@ -29,12 +29,14 @@ class Cliente(Node):
         self.declare_parameter('repeticiones', 1)        # Vueltas completas a la traza
         self.declare_parameter('pausa_s', 0.5)           # Descanso entre un goal y el siguiente
         self.declare_parameter('modo', 'secuencial')     # secuencial | asincrono
+        self.declare_parameter('inicio_unix', 0.0)       # Instante (epoch, s) en que empieza a enviar; 0 = ya
 
         self.client_id = self.get_parameter('client_id').value
         self.priority = int(self.get_parameter('priority').value)
         self.repeticiones = int(self.get_parameter('repeticiones').value)
         self.pausa = float(self.get_parameter('pausa_s').value)
         self.modo = str(self.get_parameter('modo').value)
+        self.inicio_unix = float(self.get_parameter('inicio_unix').value)
         if self.modo not in ('secuencial', 'asincrono'):
             raise ValueError(f"modo desconocido: {self.modo}; use 'secuencial' o 'asincrono'")
 
@@ -76,6 +78,15 @@ class Cliente(Node):
         return poses
 
     # 3. Envío de goals
+    def esperar_inicio(self):
+        """Se espera hasta el instante `inicio_unix` antes de enviar el primer goal"""
+        """Sirve para que todos los clientes de una corrida arranquen igual, aunque cada
+        `ros2 run` tarde distinto en levantar"""
+        falta = self.inicio_unix - time.time()
+        if falta > 0:
+            self.get_logger().info(f'[{self.client_id}] enviando en {falta:.1f}s...')
+            time.sleep(falta)
+
     def armar_goal(self, q):
         """Se arma el goal con la pose q, el nombre y la prioridad de este cliente"""
         goal = MoveArm.Goal()
@@ -91,6 +102,8 @@ class Cliente(Node):
         if not self.cli.wait_for_server(timeout_sec=15.0):
             self.get_logger().error('El broker no aparece. ¿Está corriendo?')
             return 1
+
+        self.esperar_inicio()
 
         if self.modo == 'asincrono':
             self.correr_asincrono()
