@@ -36,11 +36,9 @@ class Politica:
 
 
 # ============================== IMPLEMENTAR · ítems 2 y 3 =========================
-# FIFO (obligatoria) y Round Robin entre clientes (la política elegida por el equipo).
-#
+# FIFO  y Round Robin entre clientes.
 # siguiente(pendientes) devuelve el ÍNDICE del pedido a atender, o None.
 # Cada Pedido trae: client_id, priority, t_llegada y espera_s.
-#
 # Ambas son funciones puras del estado de la cola: no modifican `pendientes`
 # (eso lo hace el worker del broker, bajo su lock) y solo el worker las llama.
 
