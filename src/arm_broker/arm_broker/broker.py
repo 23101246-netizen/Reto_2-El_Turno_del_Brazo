@@ -51,8 +51,11 @@ class ArmBroker(Node):
         self.archivo_rechazos = str(self.get_parameter('archivo_rechazos').value)
 
         # Reentrant permite aceptar goals mientras otro se ejecuta; MutuallyExclusive serializa al worker
+        # El estado de la cola tiene su propio grupo: si compartiera el del worker, se dejaría de
+        # publicar mientras el worker espera a que termine un movimiento
         self.grupo_entrada = ReentrantCallbackGroup()
         self.grupo_worker = MutuallyExclusiveCallbackGroup()
+        self.grupo_estado = MutuallyExclusiveCallbackGroup()
 
         # Estado compartido: todo acceso a lo que sigue se hace bajo self.lock
         self.lock = threading.Lock()
@@ -81,12 +84,13 @@ class ArmBroker(Node):
             callback_group=self.grupo_entrada,
         )
 
+        # /arm/queue_state a 5 Hz
         self.create_timer(0.2, self.publicar_estado_cola,
-                          callback_group=self.grupo_worker)
+                          callback_group=self.grupo_estado)
 
-        # El worker es el único que saca pedidos de la cola y los manda a ejecutar
-        self.worker = threading.Thread(target=self._worker, daemon=True)
-        self.worker.start()
+        # El worker es el único que saca pedidos de la cola y los manda a ejecutar: es un
+        # callback periódico del grupo MutuallyExclusive, así que dos vueltas nunca se solapan
+        self.create_timer(0.02, self._worker, callback_group=self.grupo_worker)
 
         self.get_logger().info(
             f'arm_broker listo · política={self.politica.nombre} · '
@@ -194,38 +198,37 @@ class ArmBroker(Node):
     # 6. Worker único
     def _worker(self):
         """Se desencola y ejecuta de a un pedido: es el único que decide a quién le toca"""
-        """Corre en su propio hilo. Nunca hay dos pedidos en marcha: el siguiente solo se elige
-        cuando pedido.fin avisa que el anterior terminó, y esa espera es la exclusión mutua"""
-        while not self._parar.is_set():
-            pedido = None
-            self._purgar_cancelados()
+        """Es un callback periódico de grupo_worker (MutuallyExclusive): cada vuelta atiende un
+        pedido completo y no vuelve hasta que pedido.fin avisa que terminó, y el grupo impide
+        que otra vuelta empiece antes. Esa espera es la exclusión mutua"""
+        pedido = None
+        self._purgar_cancelados()
 
-            # Si el brazo está libre, la política elige a quién le toca y se saca de la cola
+        # Si el brazo está libre, la política elige a quién le toca y se saca de la cola
+        with self.lock:
+            if self.ejecutando is None and self.pendientes:
+                indice = self.politica.siguiente(list(self.pendientes))
+                if indice is not None:
+                    pedido = self.pendientes.pop(indice)
+                    self.ejecutando = pedido
+                    pedido.t_inicio_ejec = time.time()
+
+        # Nada que hacer: la próxima vuelta del timer vuelve a mirar la cola
+        if pedido is None:
+            return
+
+        try:
+            self._atender(pedido)
+        except Exception as e:  # El worker no puede morir: se caería el broker
+            self.get_logger().error(f'error atendiendo {pedido!r}: {e!r}')
+        finally:
+            # Pase lo que pase, el brazo se libera y la política se entera
             with self.lock:
-                if self.ejecutando is None and self.pendientes:
-                    indice = self.politica.siguiente(list(self.pendientes))
-                    if indice is not None:
-                        pedido = self.pendientes.pop(indice)
-                        self.ejecutando = pedido
-                        pedido.t_inicio_ejec = time.time()
-
-            # Nada que hacer: se espera un instante antes de volver a mirar la cola
-            if pedido is None:
-                self._parar.wait(0.02)
-                continue
-
-            try:
-                self._atender(pedido)
-            except Exception as e:  # El worker no puede morir: se caería el broker
-                self.get_logger().error(f'error atendiendo {pedido!r}: {e!r}')
-            finally:
-                # Pase lo que pase, el brazo se libera y la política se entera
-                with self.lock:
-                    self.por_goal_id.pop(pedido.goal_id, None)
-                    self.ejecutando = None
-                    if pedido.resultado is not None and pedido.resultado.success:
-                        self.n_completados += 1
-                self.politica.atendido(pedido)
+                self.por_goal_id.pop(pedido.goal_id, None)
+                self.ejecutando = None
+                if pedido.resultado is not None and pedido.resultado.success:
+                    self.n_completados += 1
+            self.politica.atendido(pedido)
 
     # 7. Descarte de pedidos cancelados
     def _purgar_cancelados(self):
@@ -290,13 +293,9 @@ class ArmBroker(Node):
             if paso > self.paso_max:
                 motivo = (f'paso articular de {paso:.2f} rad desde la pose actual al '
                           f'ejecutar, máximo {self.paso_max:.2f}')
+                # n_aceptados y n_rechazados no cambian: cuentan lo que decidió goal_callback
                 self.get_logger().warn(
-                    f'ABORTADO antes de mover [{pedido.client_id} p{pedido.priority}] '
-                    f'(paso_al_ejecutar): {motivo}')
-                self._registrar_rechazo(goal_handle.request, 'paso_al_ejecutar', motivo)
-                with self.lock:   # Deja de contar como aceptado: pasa a rechazado
-                    self.n_aceptados -= 1
-                    self.n_rechazados += 1
+                    f'ABORTADO: paso_al_ejecutar [{pedido.client_id} p{pedido.priority}]: {motivo}')
                 resultado.wait_time_s = float(pedido.espera_s)
                 resultado.success = False
                 resultado.message = f'rechazado al ejecutar: {motivo}'
@@ -419,7 +418,8 @@ def main(args=None):
     """Multihilo hace falta para aceptar goals mientras otro se ejecuta"""
     rclpy.init(args=args)
     nodo = ArmBroker()
-    executor = MultiThreadedExecutor()
+    # Hacen falta hilos de sobra: el worker se queda esperando en uno mientras execute_callback usa otro
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(nodo)
     try:
         executor.spin()

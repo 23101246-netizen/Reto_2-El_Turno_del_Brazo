@@ -17,6 +17,8 @@ class Cliente(Node):
     """El cliente NUNCA publica en /joint_states: solo envía goals a la acción move_arm"""
 
     def __init__(self):
+        # Nombre del nodo por defecto; para distinguir a varios clientes se cambia al lanzar:
+        # ros2 run arm_broker cliente --ros-args -r __node:=cliente_1 -p client_id:=integrante1
         super().__init__('arm_client')
 
         # Parámetros de ROS 2: se pasan con --ros-args -p nombre:=valor
