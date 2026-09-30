@@ -51,6 +51,7 @@ class ArmBroker(Node):
         self.por_goal_id = {}
         self.ejecutando = None
         self.q_actual = [0.0] * 6
+        self.reservados = 0     # aceptados en goal_callback que aún no llegan a self.pendientes
         self.n_aceptados = 0
         self.n_rechazados = 0
         self.n_completados = 0
@@ -94,12 +95,18 @@ class ArmBroker(Node):
 
         causa, motivo = self._validar(q)
 
-        if causa is None:
-            with self.lock:
-                self.n_aceptados += 1
-            return GoalResponse.ACCEPT
-
         with self.lock:
+            if causa is None:
+                # Comprobar el cupo y reservarlo es UNA sola operación bajo el lock: si
+                # fueran dos, varios clientes simultáneos verían el mismo hueco libre y
+                # la cola superaría cola_max. La reserva se cancela en handle_accepted.
+                if len(self.pendientes) + self.reservados >= self.cola_max:
+                    causa = 'cola_llena'
+                    motivo = f'cola llena ({self.cola_max} pedidos pendientes)'
+                else:
+                    self.reservados += 1
+                    self.n_aceptados += 1
+                    return GoalResponse.ACCEPT
             self.n_rechazados += 1
         self.get_logger().warn(
             f'RECHAZADO [{cliente} p{goal_request.priority}] ({causa}): {motivo}')
@@ -107,7 +114,9 @@ class ArmBroker(Node):
         return GoalResponse.REJECT
 
     def _validar(self, q):
-        """Devuelve (None, '') si el objetivo es admisible, o (causa, motivo)."""
+        """Devuelve (None, '') si el objetivo es admisible, o (causa, motivo).
+
+        No mira el cupo de la cola: eso se decide (y se reserva) en goal_callback."""
         if any(not math.isfinite(v) for v in q):
             return 'limite', 'el objetivo contiene valores no numéricos (NaN/inf)'
 
@@ -128,11 +137,6 @@ class ArmBroker(Node):
             return 'paso', (
                 f'paso articular de {paso:.2f} rad desde la pose actual, '
                 f'máximo {self.paso_max:.2f}')
-
-        with self.lock:
-            llena = len(self.pendientes) >= self.cola_max
-        if llena:
-            return 'cola_llena', f'cola llena ({self.cola_max} pedidos pendientes)'
 
         return None, ''
 
@@ -163,6 +167,7 @@ class ArmBroker(Node):
         goal = goal_handle.request
         pedido = Pedido(goal_handle, goal.client_id, goal.priority, goal.joint_positions)
         with self.lock:
+            self.reservados = max(0, self.reservados - 1)   # la reserva pasa a ser un pedido real
             self.pendientes.append(pedido)
             self.por_goal_id[pedido.goal_id] = pedido
         self.get_logger().info(
@@ -253,6 +258,27 @@ class ArmBroker(Node):
             with self.lock:
                 origen = list(self.q_actual)
             destino = pedido.joint_positions
+
+            # Segunda validación, ahora que le toca: en goal_callback el paso se midió
+            # contra la pose de entonces, y los pedidos de delante pudieron moverla.
+            # Nadie más publica mientras corre este callback, así que q_actual es exacta.
+            paso = fk.paso_articular(origen, destino)
+            if paso > self.paso_max:
+                motivo = (f'paso articular de {paso:.2f} rad desde la pose actual al '
+                          f'ejecutar, máximo {self.paso_max:.2f}')
+                self.get_logger().warn(
+                    f'ABORTADO antes de mover [{pedido.client_id} p{pedido.priority}] '
+                    f'(paso_al_ejecutar): {motivo}')
+                self._registrar_rechazo(goal_handle.request, 'paso_al_ejecutar', motivo)
+                with self.lock:   # deja de contar como aceptado: pasa a rechazado
+                    self.n_aceptados -= 1
+                    self.n_rechazados += 1
+                resultado.wait_time_s = float(pedido.espera_s)
+                resultado.success = False
+                resultado.message = f'rechazado al ejecutar: {motivo}'
+                goal_handle.abort()
+                return resultado
+
             t_ini = pedido.t_inicio_ejec or time.time()
             espera = t_ini - pedido.t_llegada
             dt = self.duracion / self.pasos

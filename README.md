@@ -163,17 +163,24 @@ Rechazos con motivo, todos calculados con `fk.py`:
 Además se rechaza con causa `cola_llena` si hay `cola_max` pedidos pendientes. Cada rechazo se
 muestra en el log del broker y se agrega a `rechazos.csv` (`t_unix, client_id, priority, causa,
 motivo, joint_positions`), que es la evidencia del registro de rechazos. La causa es una de
-`limite`, `workspace`, `paso` o `cola_llena`.
+`limite`, `workspace`, `paso`, `cola_llena` o `paso_al_ejecutar`.
 
 Cómo está armado el broker (`broker.py`):
 
 - `goal_callback`: solo calcula con `fk.py` y devuelve ACCEPT/REJECT; nunca espera al brazo.
-  El paso articular se mide contra `q_actual` en el momento de la admisión.
+  El paso articular se mide contra `q_actual` en el momento de la admisión. El cupo de la cola
+  se comprueba y se **reserva en una sola operación bajo el lock** (`self.reservados`), para que
+  goals simultáneos no superen `cola_max`; la reserva se convierte en pedido real en
+  `handle_accepted_callback`.
 - `handle_accepted_callback`: crea el `Pedido` y lo añade a `pendientes`. No ejecuta ni publica.
 - `_worker` (un hilo): elige **un** pedido con `politica.siguiente()`, llama a
   `goal_handle.execute()` y espera `pedido.fin` antes de elegir otro. Esa espera es la exclusión
   mutua. Los pedidos cancelados mientras esperaban se descartan sin mover el brazo.
-- `execute_callback`: interpola desde `q_actual` hasta el destino en `pasos_interpolacion`
+- `execute_callback`: **vuelve a validar el paso articular** contra `q_actual` justo antes de
+  mover, porque los pedidos de delante pudieron cambiar la pose desde la admisión. Si ya no es
+  seguro, el goal termina `aborted` con `success=False`, no mueve el brazo, se anota en
+  `rechazos.csv` (causa `paso_al_ejecutar`) y pasa de aceptado a rechazado en los contadores.
+  Si es seguro, interpola desde `q_actual` hasta el destino en `pasos_interpolacion`
   pasos, publica feedback `EXECUTING` en cada uno, revisa la cancelación entre pasos y devuelve
   `wait_time_s` y `exec_time_s`. Al final siempre libera `pedido.fin`.
 - Si un goal en ejecución se cancela, el brazo se queda en la última pose publicada (no vuelve).
