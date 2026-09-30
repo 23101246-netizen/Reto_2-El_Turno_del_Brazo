@@ -1,8 +1,3 @@
-"""arm_broker — el único nodo que publica en /joint_states.
-
-Andamiaje entregado por el curso. Los bloques IMPLEMENTAR son lo que evalúa el
-reto; el resto es instrumentación y se usa tal cual.
-"""
 
 import csv
 import math
@@ -85,7 +80,7 @@ class ArmBroker(Node):
             f'arm_broker listo · política={self.politica.nombre} · '
             f'cola_max={self.cola_max} · único publicador de /joint_states')
 
-    # ========================= IMPLEMENTAR · ítem 2 ==========================
+    # ========================= ítem 2 ==========================
     def goal_callback(self, goal_request):
         """Admisión. Barata e inmediata: acepta o rechaza, nunca ejecuta.
 
@@ -237,7 +232,7 @@ class ArmBroker(Node):
                 return
 
     def execute_callback(self, goal_handle):
-        """Ejecutar UN pedido. Lo llama el worker (vía goal_handle.execute()), nunca handle_accepted.
+        """Ejecutar un pedido. Lo llama el worker (vía goal_handle.execute()), nunca handle_accepted.
 
         Interpola desde self.q_actual hasta el destino en self.pasos pasos,
         publicando con self.mover() y mandando feedback en cada uno. Comprueba
