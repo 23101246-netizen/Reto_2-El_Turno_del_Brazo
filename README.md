@@ -1,6 +1,6 @@
 # Reto 2 — El Turno del Brazo (RB-2)
 
-Cinemática directa y acceso concurrente al **JetCobot (Yahboom)** con **ROS 2 Humble**.
+Cinemática directa y acceso concurrente al JetCobot  con **ROS 2 Humble**.
 
 Cuatro clientes, un solo brazo. Ningún cliente publica en `/joint_states`: solo el worker del
 nodo `arm_broker` (en el Jetson) habla con el driver. El broker recibe goals por una acción,
@@ -22,10 +22,18 @@ Actualizar esta tabla a medida que se avanza.
 | Ítem | Contenido | Pts | Estado |
 |---|---|:-:|---|
 | 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | Código listo · tabla DH en borrador · **falta medir en el robot** |
-| 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | Andamiaje entregado · **falta implementar** (`broker.py`, `politicas.py`) |
+| 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | **Implementado** (`broker.py`, `politicas.py`) y probado con ROS simulado · **falta probar en el Jetson**, diagrama de secuencia y registro de rechazos real |
 | 3 | Medición FIFO vs. política elegida, bag + CSV + figura | 4 | Herramientas de análisis listas · **faltan corridas** |
 | 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | Pendiente |
 | — | Diseño previo firmado y cierre reflexivo | 2 | Diseño previo en borrador (`docs/`) · cierre pendiente |
+
+## Autoría
+
+La estructura del proyecto (manifiestos, `CMakeLists.txt`, `setup.py`, interfaces, publicador de
+`/arm/queue_state`, `cliente.py` y los scripts de `analisis/` y `herramientas/`) la entrega el
+curso y es idéntica para todos los equipos. El trabajo propio del equipo está en los bloques
+`IMPLEMENTAR`: `fk.py` (`DH`, `fk`), `broker.py` (`goal_callback`, `handle_accepted_callback`,
+`_worker`, `execute_callback`) y `politicas.py` (`FIFO`, `RoundRobin`).
 
 ## Estructura del repositorio
 
@@ -34,7 +42,8 @@ Actualizar esta tabla a medida que se avanza.
 | `src/arm_broker_interfaces/` | Acción `MoveArm` y mensaje `QueueState` |
 | `src/arm_broker/arm_broker/fk.py` | **Ítem 1**: tabla DH, `fk_matriz`, `fk`, límites, workspace, paso articular |
 | `src/arm_broker/arm_broker/broker.py` | **Ítem 2**: nodo `arm_broker` (goal/accepted/execute callbacks, worker) |
-| `src/arm_broker/arm_broker/politicas.py` | **Ítems 2–3**: `FIFO` y la segunda política |
+| `src/arm_broker/arm_broker/politicas.py` | **Ítems 2–3**: políticas `FIFO` y `RoundRobin` |
+| `src/arm_broker/test/test_politicas.py` | Pruebas unitarias de las políticas (no requieren ROS) |
 | `src/arm_broker/arm_broker/cliente.py` | Cliente de carga (uno por integrante) |
 | `herramientas/verificar_fk.py` | Compara `fk(q)` con el robot (corre en el Jetson) |
 | `herramientas/generar_carga.py` | Genera trazas de poses reproducibles (misma semilla = mismo CSV) |
@@ -45,7 +54,6 @@ Actualizar esta tabla a medida que se avanza.
 
 ## Reglas del reto y cómo las cubre el diseño
 
-(El andamiaje ya las fija; se cumplen del todo cuando se implementen `broker.py` y `politicas.py`.)
 
 - **Publicador único:** solo el worker de `arm_broker` publica en `/joint_states`
   (`ArmBroker.mover`). `cliente.py` solo envía goals a `move_arm`.
@@ -95,11 +103,14 @@ source install/setup.bash
 ```bash
 ros2 run arm_broker broker --ros-args -p politica:=fifo
 # la segunda política:
-ros2 run arm_broker broker --ros-args -p politica:=prioridad -p tau_envejecimiento_s:=8.0
+ros2 run arm_broker broker --ros-args -p politica:=round_robin
 ```
 
-Parámetros del broker: `politica`, `tau_envejecimiento_s`, `cola_max` (20), `paso_max_rad`
-(1.2), `duracion_movimiento_s` (3.0), `pasos_interpolacion` (10).
+El driver `sync_plan_nx` debe estar corriendo en el Jetson (una sola persona lo levanta).
+
+Parámetros del broker: `politica` (`fifo` | `round_robin`), `cola_max` (20), `paso_max_rad`
+(1.2), `duracion_movimiento_s` (3.0), `pasos_interpolacion` (10) y `archivo_rechazos`
+(`rechazos.csv`; vacío para desactivar el registro).
 
 **En cada máquina cliente** (uno por integrante, cada cual con su `client_id` y prioridad):
 
@@ -149,20 +160,52 @@ Rechazos con motivo, todos calculados con `fk.py`:
 | Workspace | `fk.dentro_del_workspace` | `efector a 512 mm de la base, máximo 480` |
 | Paso excesivo | `fk.paso_articular` | paso mayor que `paso_max_rad` |
 
+Además se rechaza con causa `cola_llena` si hay `cola_max` pedidos pendientes. Cada rechazo se
+muestra en el log del broker y se agrega a `rechazos.csv` (`t_unix, client_id, priority, causa,
+motivo, joint_positions`), que es la evidencia del registro de rechazos. La causa es una de
+`limite`, `workspace`, `paso` o `cola_llena`.
+
+Cómo está armado el broker (`broker.py`):
+
+- `goal_callback`: solo calcula con `fk.py` y devuelve ACCEPT/REJECT; nunca espera al brazo.
+  El paso articular se mide contra `q_actual` en el momento de la admisión.
+- `handle_accepted_callback`: crea el `Pedido` y lo añade a `pendientes`. No ejecuta ni publica.
+- `_worker` (un hilo): elige **un** pedido con `politica.siguiente()`, llama a
+  `goal_handle.execute()` y espera `pedido.fin` antes de elegir otro. Esa espera es la exclusión
+  mutua. Los pedidos cancelados mientras esperaban se descartan sin mover el brazo.
+- `execute_callback`: interpola desde `q_actual` hasta el destino en `pasos_interpolacion`
+  pasos, publica feedback `EXECUTING` en cada uno, revisa la cancelación entre pasos y devuelve
+  `wait_time_s` y `exec_time_s`. Al final siempre libera `pedido.fin`.
+- Si un goal en ejecución se cancela, el brazo se queda en la última pose publicada (no vuelve).
+
 `/arm/queue_state` (`arm_broker_interfaces/msg/QueueState`) se publica a 5 Hz con el cliente en
 ejecución, la longitud de la cola, las esperas y los totales aceptados/rechazados/completados.
 
 - [ ] Diagrama de secuencia (`docs/`).
 - [ ] Registro de rechazos con motivo (evidencia).
 
+### Pruebas
+
+```bash
+cd src/arm_broker && python3 -m unittest discover -s test -v   # políticas, sin ROS
+```
+
+`broker.py` necesita ROS 2 para correr; sus pruebas reales (exclusión mutua con cuatro clientes
+simultáneos, rechazos, cancelación) se hacen en el Jetson con el broker y los clientes levantados.
+
 ## Ítem 3 — Medición bajo contención
 
 Políticas comparadas:
 
 - **FIFO** (obligatoria).
-- **Segunda política:** `[completar: prioridad estática / prioridad con envejecimiento / round-robin]`
-  — justificación: `[completar]`. Los directorios de `evidencias/` deben llevar el nombre de la
-  política medida (hoy: `fifo/` y `round_robin/`); si la segunda es otra, renombrar.
+- **Round Robin entre clientes** (`round_robin`), la política elegida. Recorre los clientes en
+  orden circular a partir del último atendido y toma el más antiguo del primero que tenga algo
+  pendiente. **Ignora la prioridad numérica.**
+  - *Por qué:* con cuatro clientes en disputa, FIFO deja que un cliente que manda ráfagas haga
+    esperar a los demás; Round Robin acota la espera a un turno por cada uno de los otros
+    clientes, sin inanición y con reparto equitativo (Jain cercano a 1).
+  - *Costo:* una prioridad alta no adelanta a nadie, así que el «índice de inanición» por
+    prioridad no mejora por diseño; se discute en el cierre reflexivo.
 
 Convención de prioridad: **mayor número = más urgente** (ver `MoveArm.action`).
 
