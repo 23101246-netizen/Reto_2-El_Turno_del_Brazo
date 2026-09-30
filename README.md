@@ -1,6 +1,6 @@
 # Reto 2 — El Turno del Brazo (RB-2)
 
-Cinemática directa y acceso concurrente al **JetCobot (Yahboom)** con **ROS 2 Humble**.
+Cinemática directa y acceso concurrente al **JetCobot ** con **ROS 2 Humble**.
 
 Cuatro clientes, un solo brazo. Ningún cliente publica en `/joint_states`: solo el worker del
 nodo `arm_broker` (en el Jetson) habla con el driver. El broker recibe goals por una acción,
