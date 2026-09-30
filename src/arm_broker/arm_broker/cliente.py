@@ -1,8 +1,3 @@
-"""Cliente del broker. Cada integrante levanta el suyo.
-
-Entregado completo: no hace falta modificarlo salvo que quieran cambiar la traza.
-"""
-
 import csv
 import sys
 import time
