@@ -13,7 +13,7 @@ class Pedido:
                    joint_positions -> objetivo articular q1..q6 en rad"""
     def __init__(self, goal_handle, client_id, priority, joint_positions):
         self.goal_handle = goal_handle
-        self.goal_id = bytes(goal_handle.goal_id.uuid).hex()[:12]
+        self.goal_id = bytes(goal_handle.goal_id.uuid).hex()   # UUID completa: sin colisiones
         self.client_id = client_id
         self.priority = int(priority)
         self.joint_positions = list(joint_positions)
@@ -21,6 +21,7 @@ class Pedido:
         self.t_inicio_ejec = None       # Instante en que el worker lo sacó de la cola
         self.fin = threading.Event()    # El worker espera aquí a que termine de ejecutarse
         self.resultado = None           # Result que devuelve execute_callback
+        self.lanzado = False            # True cuando ya se llamó a goal_handle.execute()
 
     @property
     def espera_s(self):

@@ -221,6 +221,7 @@ class ArmBroker(Node):
             self._atender(pedido)
         except Exception as e:  # El worker no puede morir: se caería el broker
             self.get_logger().error(f'error atendiendo {pedido!r}: {e!r}')
+            self._finalizar_con_error(pedido, e)
         finally:
             # Pase lo que pase, el brazo se libera y la política se entera
             with self.lock:
@@ -233,34 +234,62 @@ class ArmBroker(Node):
     # 7. Descarte de pedidos cancelados
     def _purgar_cancelados(self):
         """Se sacan de la cola los pedidos cancelados mientras esperaban; no mueven el brazo"""
+        """Cada uno pasa por _atender: execute_callback lo cierra como cancelado y devuelve su
+        Result, porque rclpy solo envía el resultado de un goal desde execute_callback"""
         with self.lock:
             cancelados = [p for p in self.pendientes if p.goal_handle.is_cancel_requested]
             for p in cancelados:
                 self.pendientes.remove(p)
-                self.por_goal_id.pop(p.goal_id, None)
         for p in cancelados:
-            p.goal_handle.canceled()
-            self.get_logger().info(f'DESCARTADO (cancelado en cola) {p!r}')
+            try:
+                self._atender(p)
+            except Exception as e:
+                self.get_logger().error(f'error descartando {p!r}: {e!r}')
+                self._finalizar_con_error(p, e)
+            finally:
+                with self.lock:
+                    self.por_goal_id.pop(p.goal_id, None)
 
     # 8. Atención de un pedido
     def _atender(self, pedido):
         """Se lanza un pedido y se espera a que termine; solo lo llama el worker"""
         goal_handle = pedido.goal_handle
 
-        # Si lo cancelaron justo antes de empezar, se descarta sin mover el brazo
-        if goal_handle.is_cancel_requested:
-            goal_handle.canceled()
-            self.get_logger().info(f'DESCARTADO (cancelado en cola) {pedido!r}')
-            return
-
         self.get_logger().info(
             f'EJECUTANDO {pedido!r} · esperó {pedido.espera_s:.2f}s')
+        pedido.lanzado = True
         goal_handle.execute()   # El executor corre execute_callback en otro hilo
 
         # Se espera a que termine ANTES de sacar el siguiente: aquí está la exclusión mutua
         while not pedido.fin.wait(0.1):
             if self._parar.is_set():
                 return
+
+    # 8b. Cierre de un pedido cuando _atender falla
+    def _finalizar_con_error(self, pedido, error):
+        """Se da por fallido el pedido para que ni el worker ni el cliente queden bloqueados"""
+        """Se crea un Result fallido, se guarda en pedido.resultado y se libera pedido.fin"""
+        resultado = MoveArm.Result()
+        resultado.success = False
+        resultado.message = f'error interno del broker: {error!r}'
+        resultado.wait_time_s = float(pedido.espera_s)
+        resultado.exec_time_s = 0.0
+        pedido.resultado = resultado
+
+        goal_handle = pedido.goal_handle
+        try:
+            if pedido.lanzado:
+                goal_handle.abort()
+            else:
+                # Sin execute() rclpy nunca envía el Result al cliente, y abort() no es válido
+                # desde ACCEPTED: se lanza el goal y execute_callback lo aborta devolviendo
+                # este resultado fallido
+                pedido.lanzado = True
+                goal_handle.execute()
+        except Exception as e:  # El goal puede ya estar en un estado terminal
+            self.get_logger().error(f'no pude abortar {pedido!r}: {e!r}')
+        finally:
+            pedido.fin.set()
 
     # 9. Ejecución con interpolación
     def execute_callback(self, goal_handle):
@@ -270,7 +299,7 @@ class ArmBroker(Node):
         """Pase lo que pase, al final se hace pedido.fin.set() para liberar al worker"""
         """Retorna el Result con success, message, wait_time_s y exec_time_s"""
         # Se busca el Pedido que corresponde a este goal
-        goal_id = bytes(goal_handle.goal_id.uuid).hex()[:12]
+        goal_id = bytes(goal_handle.goal_id.uuid).hex()
         with self.lock:
             pedido = self.por_goal_id.get(goal_id)
 
@@ -282,6 +311,22 @@ class ArmBroker(Node):
             return resultado
 
         try:
+            # El worker ya dio el pedido por fallido antes de lanzarlo: se aborta con ese resultado
+            if pedido.resultado is not None:
+                resultado = pedido.resultado
+                goal_handle.abort()
+                return resultado
+
+            # Cancelado mientras esperaba en la cola: se cierra sin mover el brazo
+            if goal_handle.is_cancel_requested:
+                self.get_logger().info(f'DESCARTADO (cancelado en cola) {pedido!r}')
+                goal_handle.canceled()
+                resultado.success = False
+                resultado.message = 'cancelado mientras esperaba en cola'
+                resultado.wait_time_s = float(pedido.espera_s)
+                resultado.exec_time_s = 0.0
+                return resultado
+
             with self.lock:
                 origen = list(self.q_actual)
             destino = pedido.joint_positions

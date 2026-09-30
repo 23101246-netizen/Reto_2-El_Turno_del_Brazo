@@ -120,6 +120,23 @@ ros2 run arm_broker cliente --ros-args \
   -p client_id:=ana -p priority:=3 -p traza:=/ruta/traza_oficial.csv -p repeticiones:=1
 ```
 
+Para generar cola de verdad (varios pedidos pendientes a la vez) se usa el modo asíncrono, que
+envía toda la traza sin esperar a que cada goal termine y recoge los resultados al final:
+
+```bash
+ros2 run arm_broker cliente --ros-args -r __node:=cliente_1 \
+  -p client_id:=A -p priority:=1 -p traza:=/ruta/traza_oficial.csv \
+  -p modo:=asincrono -p pausa_s:=0.0
+```
+
+`modo` es `secuencial` (por defecto: un goal a la vez, sirve para probar un movimiento) o
+`asincrono`. Con `pausa_s` en 0 los goals de cada cliente llegan seguidos y compiten entre sí.
+Con cuatro clientes asíncronos a la vez, FIFO y Round Robin atienden en órdenes distintos; en el
+modo secuencial cada cliente tiene un solo pedido en cola y las dos políticas se parecen mucho.
+
+La traza se valida al cargarla: cada fila no vacía (ni comentario `#`) debe tener exactamente
+6 números finitos; si no, el cliente termina con un error que indica el archivo y la línea.
+
 `-r __node:=cliente_N` le da a cada cliente un nombre de nodo distinto (`cliente_1`, `cliente_2`,
 …); sin él todos se llaman `arm_client` y no se distinguen en `ros2 node list`. `client_id` es
 el nombre que aparece en `/arm/queue_state`.
@@ -196,7 +213,16 @@ Cómo está armado el broker (`broker.py`):
   Si es seguro, interpola desde `q_actual` hasta el destino en `pasos_interpolacion`
   pasos, publica feedback `EXECUTING` en cada uno, revisa la cancelación entre pasos y devuelve
   `wait_time_s` y `exec_time_s`. Al final siempre libera `pedido.fin`.
-- Si un goal en ejecución se cancela, el brazo se queda en la última pose publicada (no vuelve).
+- Cancelación: `rclpy` solo envía el `Result` al cliente desde `execute_callback`, así que un
+  pedido cancelado en la cola también pasa por `goal_handle.execute()` (que en ese caso no lo
+  pasa a EXECUTING) y `execute_callback` lo cierra como `canceled` sin mover el brazo, con
+  `success=False`, `message='cancelado mientras esperaba en cola'`, `wait_time_s` = lo que
+  esperó y `exec_time_s=0.0`. Si se cancela durante la ejecución, el brazo se queda en la
+  última pose publicada (no vuelve) y el mensaje es `cancelado durante la ejecución…`.
+- Errores internos: si `_atender` falla, se registra el error y el pedido se da por fallido
+  (`aborted`, `success=False`, `pedido.resultado` asignado y `pedido.fin` liberado), de modo que
+  ni el worker ni el cliente quedan bloqueados.
+- Los `goal_id` son la UUID completa (32 caracteres hexadecimales), sin recortar.
 
 `/arm/queue_state` (`arm_broker_interfaces/msg/QueueState`) se publica a 5 Hz con el cliente en
 ejecución, la longitud de la cola, las esperas y los totales aceptados/rechazados/completados.
@@ -207,11 +233,24 @@ ejecución, la longitud de la cola, las esperas y los totales aceptados/rechazad
 ### Pruebas
 
 ```bash
-cd src/arm_broker && python3 -m unittest discover -s test -v   # políticas, sin ROS
+cd src/arm_broker && python3 -m unittest discover -s test -v
 ```
 
-`broker.py` necesita ROS 2 para correr; sus pruebas reales (exclusión mutua con cuatro clientes
-simultáneos, rechazos, cancelación) se hacen en el Jetson con el broker y los clientes levantados.
+No necesitan ROS 2 ni el robot. `test_broker_simulado.py` sustituye `rclpy` por dobles de
+prueba —incluida la máquina de estados de los goals, de modo que un `abort()` o `canceled()`
+inválido falla igual que en ROS— y verifica:
+
+| Prueba | Qué comprueba |
+|---|---|
+| `TestAdmision` | goal válido aceptado; límites, workspace y paso rechazados con motivo (también en `rechazos.csv`); cola llena; cupo exacto con 40 goals simultáneos; UUID completa |
+| `TestEjecucion` | nunca más de un `execute_callback` a la vez y ningún mensaje en `/joint_states` sin un goal ejecutando; tiempos y feedback; revalidación del paso al ejecutar |
+| `TestCancelacion` | cancelación en cola (el cliente recibe su `Result`) y en ejecución; una excepción en `_atender` no bloquea al cliente ni al worker |
+| `TestPoliticasEnElBroker` | con la cola `A1 A2 A3 B1 B2 C1 C2` pendiente, FIFO atiende `A1 A2 A3 B1 B2 C1 C2` y Round Robin `A1 B1 C1 A2 B2 C2 A3`, también con tres `Cliente` reales en modo asíncrono |
+| `TestCliente` | validación estricta de la traza CSV y del parámetro `modo` |
+| `TestUnicoPublicador` | análisis estático: solo `broker.py` crea publicadores, solo `mover()` publica en `/joint_states` y `cliente.py` no publica nada |
+
+Las pruebas simuladas se omiten si ROS 2 está instalado. Sus resultados no sustituyen la
+prueba real: falta correr el broker y los clientes en el Jetson con el robot.
 
 ## Ítem 3 — Medición bajo contención
 
