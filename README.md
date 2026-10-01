@@ -244,6 +244,30 @@ ejecución, la longitud de la cola, las esperas y los totales aceptados/rechazad
 
 ### Pruebas
 
+**Pruebas esenciales** (una por fila de la tabla de pruebas esenciales), en `test_esenciales.py`:
+
+```bash
+cd src/arm_broker && python3 -m unittest discover -s test -p "test_esenciales.py" -v
+```
+
+| Ítem | Prueba esencial | Qué demuestra |
+|---|---|---|
+| 1 FK | pose cero, predicciones de las 3 poses del diseño previo, cálculo del error | La FK y el criterio de error ≤ 10 mm (las 3 poses físicas necesitan el robot) |
+| 2 | Goal válido → `ACCEPT` | El broker acepta una solicitud correcta |
+| 2 | Límite articular → `REJECT` | Rechazo con motivo |
+| 2 | Workspace → `REJECT` | Rechazo con motivo |
+| 2 | Paso excesivo → `REJECT` | Rechazo con motivo |
+| 2 | `handle_accepted` solo encola | Encolar ≠ ejecutar |
+| 2 | Máximo 1 goal ejecutándose | Exclusión mutua |
+| 2 | Solo el broker publica `/joint_states` | Regla de oro |
+| 2 | FIFO y Round Robin generan el orden esperado | Las políticas funcionan |
+
+Los ítems 3 y 4 se cubren en `test_analisis.py` y `test_auditar_ik.py`; sus corridas y la prueba
+física necesitan el robot. Las demás pruebas de abajo son ampliadas (casos límite, cancelación,
+concurrencia, cliente).
+
+**Todas las pruebas:**
+
 ```bash
 cd src/arm_broker && python3 -m unittest discover -s test -v
 ```
