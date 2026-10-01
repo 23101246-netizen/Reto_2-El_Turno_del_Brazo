@@ -24,7 +24,7 @@ Actualizar esta tabla a medida que se avanza.
 | 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | Código listo · tabla DH en borrador · **falta medir en el robot** |
 | 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | **Implementado** (`broker.py`, `politicas.py`) y probado con ROS simulado · **falta probar en el Jetson**, diagrama de secuencia y registro de rechazos real |
 | 3 | Medición FIFO vs. política elegida, bag + CSV + figura | 4 | Protocolo, predicción, script de corrida y análisis listos y probados con datos simulados · **faltan el ensayo con ROS 2 y las corridas oficiales** |
-| 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | Pendiente |
+| 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | Herramienta, evidencia CSV y documento listos y probados sin robot · **falta la sesión con el robot** |
 | — | Diseño previo firmado y cierre reflexivo | 2 | Diseño previo en borrador (`docs/`) · cierre pendiente |
 
 ## Autoría
@@ -46,6 +46,8 @@ curso y es idéntica para todos los equipos. El trabajo propio del equipo está 
 | `src/arm_broker/test/test_politicas.py` | Pruebas unitarias de las políticas (no requieren ROS) |
 | `src/arm_broker/arm_broker/cliente.py` | Cliente de carga (uno por integrante) |
 | `herramientas/verificar_fk.py` | Compara `fk(q)` con el robot (corre en el Jetson) |
+| `herramientas/auditar_ik.py` | **Ítem 4**: pide un objetivo con `send_coords()` y audita el `q` real con la FK propia |
+| `docs/item4_auditoria_ik.md` | Qué demuestra el ítem 4, tabla de evidencia y lista de verificación |
 | `herramientas/generar_carga.py` | Genera trazas de poses reproducibles (misma semilla = mismo CSV) |
 | `analisis/exportar_csv.py` | Bag → `queue_state.csv` y `joint_states.csv` |
 | `analisis/metricas.py` | Espera media/p95/máxima, inanición, Jain, rechazos con causas, violaciones de exclusión mutua y figura comparativa |
@@ -257,6 +259,7 @@ inválido falla igual que en ROS— y verifica:
 | `TestCancelacion` | cancelación en cola (el cliente recibe su `Result`) y en ejecución; una excepción en `_atender` no bloquea al cliente ni al worker |
 | `TestPoliticasEnElBroker` | con la cola `A1 A2 A3 B1 B2 C1 C2` pendiente, FIFO atiende `A1 A2 A3 B1 B2 C1 C2` y Round Robin `A1 B1 C1 A2 B2 C2 A3`, también con tres `Cliente` reales en modo asíncrono |
 | `TestCliente` | validación estricta de la traza CSV y del parámetro `modo` |
+| `test_auditar_ik.py` | `auditar_ik.py` (error cartesiano, grados/radianes, registro CSV y flujo completo con un brazo simulado) |
 | `test_analisis.py` | `metricas.py` (violaciones, Jain a mitad, rechazos, figura) y `simular_politicas.py` (órdenes de FIFO y Round Robin) con CSV sintéticos |
 | `TestUnicoPublicador` | análisis estático: solo `broker.py` crea publicadores, solo `mover()` publica en `/joint_states` y `cliente.py` no publica nada |
 
@@ -334,10 +337,27 @@ Notas sobre la medición:
 
 ## Ítem 4 — Puerta a la cinemática inversa
 
-Un único objetivo cartesiano `(x, y, z)` sobre la mesa, resuelto por el firmware con
-`send_coords()` (pymycobot). Luego se lee el `q` realmente ejecutado, se calcula `FK(q)` con
-`fk.py` y se mide el error contra lo solicitado (≤ 10 mm). Pregunta abierta para la semana 5:
-¿por qué el brazo eligió esa solución y no la del codo contrario?
+Un único objetivo cartesiano `(x, y, z)` sobre la mesa, resuelto por el **firmware** con
+`send_coords()` (pymycobot): **el equipo no escribe un solver de IK**. Luego se lee el `q`
+realmente ejecutado (`get_angles()`, en grados), se pasa a radianes, se calcula `FK(q_real)` con
+`fk.py` y se mide el error contra lo solicitado (≤ 10 mm). `get_coords()` es dato de apoyo.
+
+```
+objetivo → send_coords() → el firmware resuelve la IK → el brazo adopta q
+        → get_angles() [°] → q [rad] → FK(q_real) → e = |FK(q_real) − objetivo|
+```
+
+```bash
+python3 herramientas/auditar_ik.py --plantilla          # tabla vacía, sin robot
+python3 herramientas/auditar_ik.py --solo-leer          # no mueve; diagnóstico FK vs get_coords()
+python3 herramientas/auditar_ik.py --x X --y Y --z Z --rx RX --ry RY --rz RZ \
+    --confirmo-espacio-despejado --guardar              # la auditoría; agrega a evidencias/item4/
+```
+
+No hay objetivo por defecto: el punto seguro sobre el tablero se mide y se define en la sesión. La
+evidencia queda en `evidencias/item4/auditoria_ik.csv`. Detalle, tabla de evidencia, cómo leer el
+resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del codo contrario?) en
+[`docs/item4_auditoria_ik.md`](docs/item4_auditoria_ik.md).
 
 - [ ] Objetivo pedido, `q` ejecutado, `FK(q)` y error: `[completar]`
 
