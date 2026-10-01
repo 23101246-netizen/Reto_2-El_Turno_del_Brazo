@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-""" Métricas del ítem 3 a partir de los CSV del bag, y la figura comparativa """
+""" MÉTRICAS DEL ÍTEM 3 REALIZADAS A PARTIR DE LOS CSV DEL BAG Y DE LA FIGURA COMPARATIVA """
 
-"""Convención de prioridad: MAYOR número = MÁS urgente (la declara MoveArm.action)
-El índice de inanición es, por tanto, la espera máxima del número MÁS BAJO"""
+""" - Convención de prioridad: Un mayor número signica que es más urgente (esto lo declara MoveArm.action). 
+Asi que, el índice de inanición es la espera máxima del número MÁS BAJO."""
 
-"""Uso: un directorio por política, cada uno con los CSV que salen de exportar_csv.py
+""" - Uso: Solo un directorio por política, cada uno con los CSV que salen de exportar_csv.py
 
     python3 metricas.py evidencias/item3/fifo/queue_state.csv \\
                         evidencias/item3/round_robin/queue_state.csv \\
                         --salida evidencias/item3/comparacion_politicas.png
 
-Junto a cada queue_state.csv se buscan, si existen:
-    joint_states.csv  -> para detectar violaciones de exclusión mutua
-    rechazos.csv      -> para las causas de los goals rechazados (lo escribe el broker)"""
+    Junto a cada queue_state.csv se buscan, si existen:
+        joint_states.csv: para detectar violaciones de exclusión mutua
+        rechazos.csv: para las causas de los goals rechazados (lo escribe el broker)."""
 
-"""Calcula: espera media, p95 y máxima (global y por prioridad), índice de inanición,
-goals atendidos por cliente, equidad de Jain (al final y a mitad de la corrida), goals
-rechazados con sus causas y violaciones de exclusión mutua"""
+""" - Calcula: Se calcula la espera media, p95 y máxima (global y por prioridad), índice de inanición,
+goals atendidos por cliente, equidad de Jain (al final y a la mitad de la corrida), goals
+rechazados con sus causas y violaciones de exclusión mutua."""
 
-"""Limitación de la medición: /arm/queue_state se publica a 5 Hz, así que cada espera se
-conoce con una resolución de ~0.2 s, y un goal que empieza a ejecutarse antes de la
-siguiente publicación no llega a verse en la cola. Afecta igual a todas las políticas"""
+""" - Limitación de la medición: Se publica a 5 Hz: /arm/queue_state , así que cada espera se
+conoce con una resolución de ~ 0.2 s, y un goal que empieza a ejecutarse antes de la
+siguiente publicación no llega a verse en la cola. Afecta igual a todas las políticas."""
 
 import argparse
 import bisect
@@ -29,10 +29,8 @@ import os
 import statistics
 import sys
 
-# Ventana (s) alrededor de un mensaje de /joint_states en la que debe verse un goal
-# ejecutándose; algo mayor que el periodo de /arm/queue_state (0.2 s)
+# Ventana alrededor de un mensaje de /joint_states en la que debe verse un goal ejecutándose
 VENTANA_EJECUCION_S = 0.25
-
 
 # 1. Lectura de los CSV
 def filas_cola(ruta):
@@ -46,7 +44,7 @@ def filas_cola(ruta):
 
 
 def leer(ruta):
-    """Devuelve (esperas_por_cliente, esperas_por_prioridad, completados)."""
+    """Devuelve: esperas_por_cliente, esperas_por_prioridad, completados."""
     vistos = {}
     por_cliente = {}
     por_prioridad = {}
@@ -89,7 +87,7 @@ def p95(xs):
 
 
 def jain(valores):
-    """Equidad de Jain: 1.0 = reparto perfecto, 1/n = uno se lo lleva todo."""
+    """Equidad de Jain: 1.0 significa reparto perfecto, 1/n significa que uno se lo lleva todo."""
     if not valores or sum(valores) == 0:
         return 0.0
     n = len(valores)
@@ -99,8 +97,8 @@ def jain(valores):
 def jain_a_mitad(filas):
     """Se calcula la equidad de Jain sobre los goals que ya habían empezado a mitad de la corrida"""
     """Al final de una traza finita todos los clientes atendieron lo mismo y Jain vale 1.0 para
-    cualquier política; a mitad de la corrida sí se ve quién iba ganando"""
-    """Retorna (jain, {cliente: goals}) o (None, {}) si no hubo ejecuciones"""
+    cualquier política, a mitad de la corrida sí se ve quién iba ganando"""
+    """Termina retornando: jain, {cliente: goals} o (None, {}) si no hubo ejecuciones"""
     inicios = {}   # goal_id -> (cliente, primer instante en que se vio ejecutándose)
     for fila in filas:
         gid = fila['executing_goal_id']
@@ -118,18 +116,20 @@ def jain_a_mitad(filas):
             conteo[cliente] += 1
     return jain(list(conteo.values())), conteo
 
-
 # 3. Exclusión mutua
 def violaciones_exclusion(filas, ruta_joint):
-    """Se buscan indicios de violación de la exclusión mutua en los CSV"""
-    """Un bag de /joint_states no dice quién publicó cada mensaje, así que se correlaciona con
-    /arm/queue_state (que solo tiene UN executing_goal_id a la vez). Se cuentan:
+    """Se buscan indicios de violación de exclusión mutua en los CSV"""
+    """Un bag de /joint_states no dice quién publicó cada mensaje, así que se correlaciona con /arm/queue_state 
+    (que solo tiene UN executing_goal_id a la vez). 
+    
+    Se cuentan:
       - intercaladas: un goal que vuelve a ejecutarse después de que otro empezó
       - sin_ejecucion: mensajes de /joint_states sin ningún goal ejecutándose cerca
+    
     Es un indicio, no una prueba: la prueba de que no hay otro publicador es
-    `ros2 topic info /joint_states -v`, que debe mostrar un solo publicador (el broker)"""
-    """Retorna un dict con 'intercaladas', 'sin_ejecucion' (None si no hay joint_states.csv)
-    y 'mensajes_joint'"""
+    'ros2 topic info /joint_states -v', que debe mostrar un solo publicador (el broker)"""
+    
+    """Se retorna un dict con "intercaladas", "sin_ejecucion" o None si no hay joint_states.csv y 'mensajes_joint'"""
     # Goals intercalados: la secuencia de executing_goal_id no puede repetir un goal ya cerrado
     secuencia = []
     for fila in filas:
@@ -142,7 +142,7 @@ def violaciones_exclusion(filas, ruta_joint):
     if not ruta_joint or not os.path.isfile(ruta_joint) or not filas:
         return resultado
 
-    # Instantes en los que /arm/queue_state vio un goal ejecutándose
+    # Instantes en el que /arm/queue_state vio un goal ejecutandose
     tiempos = [f['t_s'] for f in filas]
     ejecutando = [f['t_s'] for f in filas if f['executing_goal_id']]
 
@@ -170,7 +170,7 @@ def resumen(nombre, ruta):
 
     print(f'\n=== {nombre}   ({ruta})')
     if not todas:
-        print('  sin datos: ¿se grabó /arm/queue_state?')
+        print('  sin datos')
         return None
 
     filas = filas_cola(ruta)
@@ -207,8 +207,8 @@ def resumen(nombre, ruta):
     n_rechazados = max(int(f['total_rejected'] or 0) for f in filas)
     n_aceptados = max(int(f['total_accepted'] or 0) for f in filas)
     causas = leer_rechazos(ruta_rechazos) if os.path.isfile(ruta_rechazos) else None
-    print(f'  goals aceptados    : {n_aceptados}')
-    print(f'  goals rechazados   : {n_rechazados}   causas: '
+    print(f'  goals aceptados : {n_aceptados}')
+    print(f'  goals rechazados : {n_rechazados}   causas: ' 
           f'{causas if causas is not None else "sin rechazos.csv junto al queue_state.csv"}')
 
     # Violaciones de exclusión mutua: deben ser 0
@@ -221,13 +221,12 @@ def resumen(nombre, ruta):
               f'joint_states sin goal ejecutando={v["sin_ejecucion"]} '
               f'de {v["mensajes_joint"]} mensajes   (deben ser 0)')
 
-    return {'nombre': nombre, 'todas': todas, 'por_prioridad': por_prioridad,
-            'atendidos': atendidos, 'inanicion': inanicion, 'jain': j, 'jain_mitad': jm,
-            'violaciones': v, 'rechazados': n_rechazados}
-
+    return {'nombre': nombre, 'todas': todas, 'por_prioridad': por_prioridad, 'atendidos': atendidos, 
+            'inanicion': inanicion, 'jain': j, 'jain_mitad': jm, 'violaciones': v, 'rechazados': n_rechazados}
 
 # 5. Figura comparativa
-# Paleta categórica en orden fijo: cada política conserva su color en todos los paneles
+
+# Paleta categórica en orden fijo: Significa que cada política conserva su color en todos los paneles
 COLORES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']   # azul, naranja, aqua, amarillo
 TINTA, TINTA_2, TINTA_3 = '#0b0b0b', '#52514e', '#898781'
 SUPERFICIE, REJILLA, EJE = '#fcfcfb', '#e1e0d9', '#c3c2b7'
@@ -263,7 +262,7 @@ def figura(datos, salida='comparacion_politicas.png'):
         ax.set_axisbelow(True)
 
     def barras(ax, etiquetas, series, formato='{:.1f}'):
-        """series = {política: [valor por etiqueta]}; una barra fina por política"""
+        """series = política: [valor por etiqueta], una barra fina por política"""
         ancho = 0.8 / max(1, len(series))
         for k, (nombre, valores) in enumerate(series.items()):
             xs = [i + (k - (len(series) - 1) / 2) * ancho for i in range(len(etiquetas))]
@@ -336,8 +335,9 @@ def main():
     if len(datos) >= 2:
         figura(datos, args.salida)
     elif datos:
-        print('\nCon un solo CSV no hay comparación. Graben una corrida por política.')
+        print('\nCon un solo CSV no hay existe una comparación. Entonces es  necesario grabar una corrida por política.')
 
 
 if __name__ == '__main__':
     main()
+
