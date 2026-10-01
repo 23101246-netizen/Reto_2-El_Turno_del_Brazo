@@ -17,23 +17,38 @@ los admite o rechaza con la FK, los encola según una política y los ejecuta de
 
 ## Estado del proyecto
 
-Actualizar esta tabla a medida que se avanza.
+Actualizar esta tabla a medida que se avanza. Todo lo que no necesita el robot está hecho y probado
+(19 pruebas automáticas, sin ROS 2); lo pendiente depende del Jetson y del brazo.
 
 | Ítem | Contenido | Pts | Estado |
 |---|---|:-:|---|
-| 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | Código listo · tabla DH en borrador · **falta medir en el robot** |
-| 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | **Implementado** (`broker.py`, `politicas.py`) y probado con ROS simulado · **falta probar en el Jetson**, diagrama de secuencia y registro de rechazos real |
-| 3 | Medición FIFO vs. política elegida, bag + CSV + figura | 4 | Protocolo, predicción, script de corrida y análisis listos y probados con datos simulados · **faltan el ensayo con ROS 2 y las corridas oficiales** |
-| 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | Herramienta, evidencia CSV y documento listos y probados sin robot · **falta la sesión con el robot** |
-| — | Diseño previo firmado y cierre reflexivo | 2 | Diseño previo en borrador (`docs/`) · cierre pendiente |
+| 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | `fk.py` y tabla DH (`docs/tabla_dh.*`) listos · predicciones de 3 poses calculadas · **falta medir en el robot** |
+| 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | `broker.py` y `politicas.py` implementados (admisión con rechazos con motivo, cupo atómico, worker único, cancelación, revalidación del paso) y probados con ROS simulado · **falta probarlo en el Jetson**, el diagrama de secuencia y el registro de rechazos real |
+| 3 | Medición FIFO vs. Round Robin, bag + CSV + figura | 4 | Protocolo, predicción, script de corrida (`experimento_item3.sh`) y análisis (`metricas.py`) listos y probados con datos simulados · **faltan el ensayo con ROS 2 y las corridas oficiales** |
+| 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | `auditar_ik.py`, CSV de evidencia y documento listos y probados sin robot · **falta la sesión con el robot** |
+| — | Diseño previo firmado y cierre reflexivo | 2 | Diseño previo (`docs/diseño_previo.*`) y cierre (`docs/cierre_reflexivo.*`) en borrador · **faltan firma, diagrama de secuencia y resultados** |
+
+### Pendiente con el robot
+
+- [ ] Resolver las dudas de la tabla DH (`d5` 75.05 vs 75.55 mm, `α4`, origen y punto del efector) y medir las 3 poses del ítem 1 (predicción congelada antes).
+- [ ] Ensayo con ROS 2 (`docs/ensayo_previo_ros2.md`): ~5 Hz en `/arm/queue_state`, un solo publicador de `/joint_states`, cola con varios goals, `ros2 bag`, exportación y análisis.
+- [ ] Recalcular la predicción con la traza oficial, congelarla y firmar el diseño previo.
+- [ ] Las dos corridas oficiales (`experimento_item3.sh fifo` y `round_robin`) y `resultados.md`.
+- [ ] La sesión del ítem 4 (`auditar_ik.py`) con un objetivo seguro medido sobre el tablero.
+- [ ] Diagrama de secuencia, video de 3 minutos y cierre reflexivo con resultados.
 
 ## Autoría
 
-La estructura del proyecto (manifiestos, `CMakeLists.txt`, `setup.py`, interfaces, publicador de
-`/arm/queue_state`, `cliente.py` y los scripts de `analisis/` y `herramientas/`) la entrega el
-curso y es idéntica para todos los equipos. El trabajo propio del equipo está en los bloques
-`IMPLEMENTAR`: `fk.py` (`DH`, `fk`), `broker.py` (`goal_callback`, `handle_accepted_callback`,
-`_worker`, `execute_callback`) y `politicas.py` (`FIFO`, `RoundRobin`).
+La estructura base (manifiestos, `CMakeLists.txt`, `setup.py`, interfaces, publicador de
+`/arm/queue_state`, y los scripts originales de `analisis/` y `herramientas/`) la entrega el curso y
+es idéntica para todos los equipos. El trabajo propio del equipo está en:
+
+- `fk.py` (`DH`, `fk` y las validaciones), `broker.py` (`goal_callback`, `handle_accepted_callback`,
+  `_worker`, `execute_callback` y lo que los rodea) y `politicas.py` (`FIFO`, `RoundRobin`);
+- las ampliaciones de `cliente.py` (modo asíncrono, `inicio_unix`, validación de la traza) y de
+  `analisis/metricas.py` (rechazos, violaciones de exclusión mutua, Jain a mitad de corrida, figura);
+- las herramientas nuevas `auditar_ik.py`, `experimento_item3.sh` y `simular_politicas.py`, la traza
+  provisional, las pruebas y los documentos de `docs/`.
 
 ## Estructura del repositorio
 
@@ -43,32 +58,32 @@ curso y es idéntica para todos los equipos. El trabajo propio del equipo está 
 | `src/arm_broker/arm_broker/fk.py` | **Ítem 1**: tabla DH, `fk_matriz`, `fk`, límites, workspace, paso articular |
 | `src/arm_broker/arm_broker/broker.py` | **Ítem 2**: nodo `arm_broker` (goal/accepted/execute callbacks, worker) |
 | `src/arm_broker/arm_broker/politicas.py` | **Ítems 2–3**: políticas `FIFO` y `RoundRobin` |
-| `src/arm_broker/test/test_politicas.py` | Pruebas unitarias de las políticas (no requieren ROS) |
-| `src/arm_broker/arm_broker/cliente.py` | Cliente de carga (uno por integrante) |
+| `src/arm_broker/arm_broker/cliente.py` | Cliente de carga (uno por integrante; modos secuencial y asíncrono) |
+| `src/arm_broker/test/` | `test_esenciales.py` (ítems 1 y 2), `test_analisis.py` (ítem 3), `test_auditar_ik.py` (ítem 4) y `simulacion_ros.py` (dobles de ROS, sin pruebas) |
 | `herramientas/verificar_fk.py` | Compara `fk(q)` con el robot (corre en el Jetson) |
 | `herramientas/auditar_ik.py` | **Ítem 4**: pide un objetivo con `send_coords()` y audita el `q` real con la FK propia |
-| `docs/item4_auditoria_ik.md` | Qué demuestra el ítem 4, tabla de evidencia y lista de verificación |
+| `herramientas/experimento_item3.sh` | **Ítem 3**: corre una política con el protocolo fijo y deja la evidencia en `evidencias/item3/` |
+| `herramientas/simular_politicas.py` | **Ítem 3**: modelo de cola para la predicción previa (usa las mismas clases de política) |
 | `herramientas/generar_carga.py` | Genera trazas de poses reproducibles (misma semilla = mismo CSV) |
+| `trazas/prueba.csv` | Traza **provisional** para desarrollo (no es la oficial del docente) |
 | `analisis/exportar_csv.py` | Bag → `queue_state.csv` y `joint_states.csv` |
 | `analisis/metricas.py` | Espera media/p95/máxima, inanición, Jain, rechazos con causas, violaciones de exclusión mutua y figura comparativa |
-| `herramientas/experimento_item3.sh` | Corre una política con el protocolo fijo y deja la evidencia en `evidencias/item3/` |
-| `herramientas/simular_politicas.py` | Modelo de cola para la predicción previa (usa las mismas clases de política) |
-| `trazas/prueba.csv` | Traza **provisional** para desarrollo (no es la oficial) |
-| `docs/tabla_dh.md` / `.pdf` | Documento de diseño previo: tabla DH y predicciones |
+| `docs/tabla_dh.md` / `.pdf` | Tabla DH, convención y predicciones de las 3 poses |
 | `docs/diseño_previo.md` / `.pdf` | Diseño previo: predicción, protocolo y comandos del ítem 3 |
 | `docs/ensayo_previo_ros2.md` | Paso a paso del ensayo con ROS 2 antes de las corridas oficiales |
+| `docs/item4_auditoria_ik.md` | Qué demuestra el ítem 4, tabla de evidencia y lista de verificación |
 | `docs/cierre_reflexivo.md` / `.pdf` | Borrador del cierre reflexivo |
-| `evidencias/` | `medición_fk.csv` (ítem 1) e `item3/` (una carpeta por política, la figura y los resultados) |
+| `evidencias/` | `medición_fk.csv` (ítem 1), `item3/` (una carpeta por política, la figura y los resultados) e `item4/auditoria_ik.csv` |
 
 ## Reglas del reto y cómo las cubre el diseño
-
 
 - **Publicador único:** solo el worker de `arm_broker` publica en `/joint_states`
   (`ArmBroker.mover`). `cliente.py` solo envía goals a `move_arm`.
 - **Encolar ≠ ejecutar:** `handle_accepted_callback` solo encola; un único hilo worker
   desencola y ejecuta, y espera `pedido.fin` antes de sacar el siguiente.
 - **Callback groups:** `ReentrantCallbackGroup` para aceptar goals mientras otro se ejecuta;
-  `MutuallyExclusiveCallbackGroup` para el worker del brazo.
+  `MutuallyExclusiveCallbackGroup` para el worker del brazo (un timer, no un hilo suelto); el
+  timer de `/arm/queue_state` va en un grupo aparte.
 - **La FK es el portero:** `goal_callback` rechaza con motivo legible si el objetivo está fuera
   de límites articulares, fuera del workspace o con paso articular excesivo.
 - **Dominio DDS propio:** cada equipo usa su `ROS_DOMAIN_ID`.
@@ -77,8 +92,10 @@ curso y es idéntica para todos los equipos. El trabajo propio del equipo está 
 
 - ROS 2 Humble (Ubuntu 22.04) en el Jetson y en las máquinas cliente.
 - `rmw_fastrtps_cpp`.
-- `pymycobot` en el Jetson (`pip install pymycobot`) para `verificar_fk.py` y el Ítem 4.
+- `pymycobot` en el Jetson (`pip install pymycobot`) para `verificar_fk.py` y `auditar_ik.py` (Ítem 4).
 - `matplotlib` para la figura de `metricas.py` (`pip install matplotlib`).
+- `rosbag2` (`ros-humble-rosbag2` y `ros-humble-rosbag2-storage-default-plugins`) para grabar y exportar el bag del Ítem 3.
+- Para las pruebas automáticas solo hace falta Python 3 (no ROS 2 ni el robot).
 
 ## Configuración de red
 
@@ -388,12 +405,14 @@ resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del cod
 ## Lista de entregables
 
 - [x] Paquetes `arm_broker` y `arm_broker_interfaces` en GitHub.
-- [ ] README con instrucciones de ejecución (este archivo; completar los campos `[completar]`).
+- [x] README con instrucciones de ejecución (este archivo; quedan los campos `[completar]` del equipo).
 - [ ] Documento de diseño previo **firmado antes de medir**: tabla DH, diagrama de secuencia y
-      predicción del p95 por política (`docs/`).
-- [ ] Bag, CSV y figura comparativa de las políticas (`evidencias/`).
+      predicción del p95 por política (`docs/`; borrador listo, faltan firma y diagrama de secuencia).
+- [ ] Bag, CSV y figura comparativa de las políticas (`evidencias/item3/`).
+- [ ] Medición de las 3 poses del ítem 1 (`evidencias/medición_fk.csv`) y auditoría del ítem 4
+      (`evidencias/item4/auditoria_ik.csv`).
 - [ ] Video de 3 minutos con los cuatro clientes en disputa y `/arm/queue_state` en pantalla.
-- [ ] Cierre reflexivo (máximo una página): ¿qué política llevarían a CapyTown y por qué?
+- [ ] Cierre reflexivo (máximo una página): ¿qué política llevarían a CapyTown y por qué? (`docs/cierre_reflexivo.*`; borrador listo).
 
 ## Rúbrica (20 pts)
 
@@ -403,7 +422,7 @@ resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del cod
 | Broker: exclusión mutua y encolado correcto | 5 | `broker.py`, `politicas.py`, bag de `/joint_states` |
 | Admisión validada con FK y rechazos razonados | 3 | `goal_callback`, registro de rechazos |
 | Medición y comparación de políticas | 4 | `evidencias/`, figura comparativa |
-| Ítem 4: error cartesiano auditado con FK propia | 2 | sección Ítem 4 |
+| Ítem 4: error cartesiano auditado con FK propia | 2 | `auditar_ik.py`, `evidencias/item4/`, `docs/item4_auditoria_ik.md` |
 | Diseño previo y cierre reflexivo | 2 | `docs/`, cierre reflexivo |
 
 **Penalización:** cualquier cliente que publique directamente en `/joint_states` anula el
