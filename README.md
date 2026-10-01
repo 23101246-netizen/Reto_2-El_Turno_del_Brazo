@@ -262,22 +262,33 @@ cd src/arm_broker && python3 -m unittest discover -s test -p "test_esenciales.py
 | 2 | Solo el broker publica `/joint_states` | Regla de oro |
 | 2 | FIFO y Round Robin generan el orden esperado | Las políticas funcionan |
 
-Los ítems 3 y 4 se cubren con `test_analisis.py` (métricas y simulador) y `test_auditar_ik.py`
-(matemática del error y flujo con un brazo simulado); sus corridas y la prueba física necesitan el
-robot. Todas se corren con:
+Para los ítems 3 y 4 solo se conserva lo que se puede probar sin robot (sus corridas y la prueba
+física necesitan el robot):
+
+| Ítem | Archivo | Prueba | Qué demuestra |
+|---|---|---|---|
+| 3 | `test_analisis.py` | métricas completas sobre CSV sintéticos (y la figura, si hay matplotlib) | `metricas.py` reporta todo lo pedido |
+| 3 | `test_analisis.py` | corrida limpia: 0 violaciones; goals intercalados: se detectan | Exclusión mutua = 0 |
+| 3 | `test_analisis.py` | órdenes de FIFO y Round Robin con la misma carga | Las dos políticas con las mismas condiciones |
+| 4 | `test_auditar_ik.py` | `error_cartesiano((0,0,0),(3,4,0)) == 5.0` | La fórmula del error |
+| 4 | `test_auditar_ik.py` | grados → radianes | La conversión antes de la FK |
+| 4 | `test_auditar_ik.py` | flujo con un brazo simulado: `send_coords` y auditoría del `q` leído | El flujo del ítem 4 |
+| 4 | `test_auditar_ik.py` | sin objetivo o sin confirmación, no se mueve el brazo | Seguridad |
+
+Todas se corren con:
 
 ```bash
 cd src/arm_broker && python3 -m unittest discover -s test -v
 ```
 
 No necesitan ROS 2 ni el robot. `simulacion_ros.py` (sin pruebas) sustituye `rclpy` por dobles,
-incluida la máquina de estados de los goals, de modo que un `abort()` o `canceled()` inválido falla
-igual que en ROS. Las pruebas simuladas se omiten si ROS 2 está instalado y no sustituyen la prueba
-real: falta correr el broker y los clientes en el Jetson con el robot.
+incluida la máquina de estados de los goals. Las pruebas del broker se omiten si ROS 2 está
+instalado y no sustituyen la prueba real: falta correr el broker y los clientes en el Jetson.
 
-Se retiraron las pruebas ampliadas (cancelación, excepciones, cupo concurrente, UUID, validación del
-CSV y del modo asíncrono del cliente, revalidación del paso); el comportamiento sigue en el código,
-y las pruebas están en el historial de git (`git show 012d0de:src/arm_broker/test/test_broker_simulado.py`).
+Se retiraron las pruebas ampliadas de los ítems 2, 3 y 4 (cancelación, excepciones, cupo
+concurrente, UUID, validación del CSV y del modo asíncrono, revalidación del paso, métricas
+auxiliares, registro CSV de la auditoría…); el comportamiento sigue en el código y las pruebas están
+en el historial de git (por ejemplo `git show 012d0de:src/arm_broker/test/test_broker_simulado.py`).
 
 ## Ítem 3 — Medición bajo contención
 

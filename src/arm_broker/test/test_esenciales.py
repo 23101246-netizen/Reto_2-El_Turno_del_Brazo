@@ -3,7 +3,7 @@
 """Ítem 1 (FK):      el cálculo de la FK y del error, y las predicciones de las 3 poses del diseño previo
 Ítem 2 (Broker):   goal válido, 3 rechazos con motivo, encolar ≠ ejecutar, exclusión mutua,
                    publicador único y orden FIFO / Round Robin
-Los ítems 3 y 4 se cubren en test_analisis.py y test_auditar_ik.py; las 3 poses FÍSICAS del ítem 1,
+Los ítems 3 y 4 tienen su parte sin robot en test_analisis.py y test_auditar_ik.py; las 3 poses FÍSICAS del ítem 1,
 las 2 corridas del ítem 3 y la prueba física del ítem 4 necesitan el robot y no son pruebas unitarias
 
 Solo las esenciales:
