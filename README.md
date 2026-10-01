@@ -262,33 +262,22 @@ cd src/arm_broker && python3 -m unittest discover -s test -p "test_esenciales.py
 | 2 | Solo el broker publica `/joint_states` | Regla de oro |
 | 2 | FIFO y Round Robin generan el orden esperado | Las políticas funcionan |
 
-Los ítems 3 y 4 se cubren en `test_analisis.py` y `test_auditar_ik.py`; sus corridas y la prueba
-física necesitan el robot. Las demás pruebas de abajo son ampliadas (casos límite, cancelación,
-concurrencia, cliente).
-
-**Todas las pruebas:**
+Los ítems 3 y 4 se cubren con `test_analisis.py` (métricas y simulador) y `test_auditar_ik.py`
+(matemática del error y flujo con un brazo simulado); sus corridas y la prueba física necesitan el
+robot. Todas se corren con:
 
 ```bash
 cd src/arm_broker && python3 -m unittest discover -s test -v
 ```
 
-No necesitan ROS 2 ni el robot. `test_broker_simulado.py` sustituye `rclpy` por dobles de
-prueba —incluida la máquina de estados de los goals, de modo que un `abort()` o `canceled()`
-inválido falla igual que en ROS— y verifica:
+No necesitan ROS 2 ni el robot. `simulacion_ros.py` (sin pruebas) sustituye `rclpy` por dobles,
+incluida la máquina de estados de los goals, de modo que un `abort()` o `canceled()` inválido falla
+igual que en ROS. Las pruebas simuladas se omiten si ROS 2 está instalado y no sustituyen la prueba
+real: falta correr el broker y los clientes en el Jetson con el robot.
 
-| Prueba | Qué comprueba |
-|---|---|
-| `TestAdmision` | goal válido aceptado; límites, workspace y paso rechazados con motivo (también en `rechazos.csv`); cola llena; cupo exacto con 40 goals simultáneos; UUID completa |
-| `TestEjecucion` | nunca más de un `execute_callback` a la vez y ningún mensaje en `/joint_states` sin un goal ejecutando; tiempos y feedback; revalidación del paso al ejecutar |
-| `TestCancelacion` | cancelación en cola (el cliente recibe su `Result`) y en ejecución; una excepción en `_atender` no bloquea al cliente ni al worker |
-| `TestPoliticasEnElBroker` | con la cola `A1 A2 A3 B1 B2 C1 C2` pendiente, FIFO atiende `A1 A2 A3 B1 B2 C1 C2` y Round Robin `A1 B1 C1 A2 B2 C2 A3`, también con tres `Cliente` reales en modo asíncrono |
-| `TestCliente` | validación estricta de la traza CSV y del parámetro `modo` |
-| `test_auditar_ik.py` | `auditar_ik.py` (error cartesiano, grados/radianes, registro CSV y flujo completo con un brazo simulado) |
-| `test_analisis.py` | `metricas.py` (violaciones, Jain a mitad, rechazos, figura) y `simular_politicas.py` (órdenes de FIFO y Round Robin) con CSV sintéticos |
-| `TestUnicoPublicador` | análisis estático: solo `broker.py` crea publicadores, solo `mover()` publica en `/joint_states` y `cliente.py` no publica nada |
-
-Las pruebas simuladas se omiten si ROS 2 está instalado. Sus resultados no sustituyen la
-prueba real: falta correr el broker y los clientes en el Jetson con el robot.
+Se retiraron las pruebas ampliadas (cancelación, excepciones, cupo concurrente, UUID, validación del
+CSV y del modo asíncrono del cliente, revalidación del paso); el comportamiento sigue en el código,
+y las pruebas están en el historial de git (`git show 012d0de:src/arm_broker/test/test_broker_simulado.py`).
 
 ## Ítem 3 — Medición bajo contención
 

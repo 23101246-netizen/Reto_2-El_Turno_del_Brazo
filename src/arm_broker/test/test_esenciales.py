@@ -9,7 +9,6 @@ las 2 corridas del ítem 3 y la prueba física del ítem 4 necesitan el robot y 
 Solo las esenciales:
     cd src/arm_broker && python3 -m unittest discover -s test -p "test_esenciales.py" -v
 """
-import math
 import os
 import random
 import sys
@@ -17,8 +16,8 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import test_broker_simulado as tb                                       # noqa: E402
-from test_broker_simulado import (HAY_ROS, OK, Base, GoalResponse,     # noqa: E402
+import simulacion_ros as tb                                       # noqa: E402
+from simulacion_ros import (HAY_ROS, OK, Base, GoalResponse,     # noqa: E402
                                   arrancar_worker, enviar, pose)
 
 from arm_broker import fk                                               # noqa: E402
