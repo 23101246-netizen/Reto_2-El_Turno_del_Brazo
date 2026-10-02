@@ -1,13 +1,9 @@
 # Documento de diseño previo — Reto 2 · El Turno del Brazo
 
-> **Estado: BORRADOR.** Las predicciones de este documento se congelan con un commit **anterior**
-> a las corridas oficiales del ítem 3 y no se editan después. Completar los campos `[ ... ]`.
-
 | Campo | Valor |
 |---|---|
-| Equipo n.º / `ROS_DOMAIN_ID` | `[ ]` / `[ ]` |
-| Integrantes | `[ ]`, `[ ]`, `[ ]`, `[ ]` |
-| Commit de congelación | `[hash]` |
+| Equipo 8 / `ROS_DOMAIN_ID` | `[ ]` / `[ ]` |
+| Integrantes | `H.L.P.E`, `J.D.R.N`, `R.S.E.R`,  |
 | Firma y fecha | `[ ]` |
 
 ## 1. Tabla DH y predicción previa (ítem 1)
@@ -82,9 +78,7 @@ sequenceDiagram
     Note over A,C: /arm/queue_state a 5 Hz
 ```
 
-*Mermaid se renderiza en GitHub; el PDF muestra el código porque no se pudo generar la imagen.*
-
-## 3. Ítem 3 — Medición bajo contención: FIFO frente a Round Robin
+## 3. Medición bajo contención: FIFO frente a Round Robin(Item 3
 
 ### 3.1 Qué se quiere saber
 
@@ -210,7 +204,7 @@ Corrida oficial (una por política; el script deja todo en `evidencias/item_3/<p
 
 ```bash
 source /opt/ros/humble/setup.bash && source install/setup.bash
-export ROS_DOMAIN_ID=<42 + n.º de equipo>
+export ROS_DOMAIN_ID=<42 + 8>
 
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh fifo
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh round_robin
