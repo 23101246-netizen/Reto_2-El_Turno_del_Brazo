@@ -16,8 +16,8 @@
 
 Denavit-Hartenberg **estándar**: `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, con
 `θ_i = q_i + offset_i` y `T_0_6 = A1·A2·A3·A4·A5·A6`; la posición del efector es la última columna de
-`T_0_6`. Longitudes en mm, ángulos en rad dentro del código. Parámetros tomados del manual del JetCobot (Yahboom) e
-implementados en `src/arm_broker/arm_broker/fk.py`:
+`T_0_6`. Longitudes en mm, ángulos en rad dentro del código. Medidas de los eslabones tomadas del manual del JetCobot (Yahboom); los marcos y la tabla se
+dedujeron en pizarra con los vectores x, y, z (rotación y traslación) de cada articulación. Implementada en `src/arm_broker/arm_broker/fk.py`:
 
 | i | θ_i | d_i [mm] | a_i [mm] | α_i |
 |:-:|:---|---:|---:|---:|
@@ -189,7 +189,7 @@ Amenazas a la validez y cómo se atienden:
 
 ```
 evidencias/
-└── item3/
+└── item_3/
     ├── fifo/
     │   ├── bag/                       (ros2 bag: /arm/queue_state y /joint_states)
     │   ├── queue_state.csv
@@ -206,7 +206,7 @@ evidencias/
 
 Ensayo previo con ROS 2 (traza provisional): [`ensayo_previo_ros2.md`](ensayo_previo_ros2.md).
 
-Corrida oficial (una por política; el script deja todo en `evidencias/item3/<política>/`):
+Corrida oficial (una por política; el script deja todo en `evidencias/item_3/<política>/`):
 
 ```bash
 source /opt/ros/humble/setup.bash && source install/setup.bash
@@ -215,9 +215,9 @@ export ROS_DOMAIN_ID=<42 + n.º de equipo>
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh fifo
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh round_robin
 
-python3 analisis/metricas.py evidencias/item3/fifo/queue_state.csv \
-    evidencias/item3/round_robin/queue_state.csv \
-    --salida evidencias/item3/comparacion_politicas.png
+python3 analisis/metricas.py evidencias/item_3/fifo/queue_state.csv \
+    evidencias/item_3/round_robin/queue_state.csv \
+    --salida evidencias/item_3/comparacion_politicas.png
 ```
 
 Si los clientes corren en Raspberry distintas, se lanzan a mano con el mismo `inicio_unix` (un
@@ -233,7 +233,7 @@ mismo instante en segundos Unix, con relojes sincronizados por NTP) y los parám
 
 ### 3.7 Plantilla de resultados
 
-[`evidencias/item3/resultados_plantilla.md`](../evidencias/item3/resultados_plantilla.md): métricas predichas y
+[`evidencias/item_3/resultados_plantilla.md`](../evidencias/item_3/resultados_plantilla.md): métricas predichas y
 medidas lado a lado, y contraste punto por punto con esta predicción.
 
 ## 4. Cierre reflexivo

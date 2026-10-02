@@ -42,7 +42,7 @@ guarda como evidencia.
 
 Pasos que ejecuta: define el objetivo → `send_coords([x, y, z, rx, ry, rz], velocidad, modo)` →
 espera → `get_angles()` → grados a radianes → `fk.fk(q_real)` → `get_coords()` como apoyo → error →
-imprime la tabla y, con `--guardar`, agrega una fila a `evidencias/item4/auditoria_ik.csv`.
+imprime la tabla y, con `--guardar`, agrega una fila a `evidencias/item_4/auditoria_ik.csv`.
 
 Probado sin robot (`test_auditar_ik.py`): `error_cartesiano((0,0,0),(3,4,0)) == 5.0`,
 `error_cartesiano((200,50,180),(198,53,184)) = √29 ≈ 5.385`, conversión grados↔radianes, el
@@ -50,7 +50,7 @@ registro de evidencia y el flujo completo con un brazo simulado.
 
 ## 3. Datos que se guardan
 
-`evidencias/item4/auditoria_ik.csv` (las 16 primeras columnas son las acordadas; el resto es apoyo):
+`evidencias/item_4/auditoria_ik.csv` (las 16 primeras columnas son las acordadas; el resto es apoyo):
 
 ```
 x_obj,y_obj,z_obj, q1_deg…q6_deg, x_fk,y_fk,z_fk, x_robot,y_robot,z_robot, error_mm,

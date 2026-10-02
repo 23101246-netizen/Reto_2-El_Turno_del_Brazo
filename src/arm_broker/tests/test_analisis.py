@@ -2,7 +2,7 @@
 
 """No necesitan ROS 2: se generan CSV sintéticos con el mismo formato que exportar_csv.py
 
-    cd src/arm_broker && python3 -m unittest discover -s test -v
+    cd src/arm_broker && python3 -m unittest discover -s tests -v
 """
 import csv
 import os

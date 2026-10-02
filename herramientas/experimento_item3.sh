@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Corre UNA política del ítem 3 con el protocolo fijo y deja la evidencia en evidencias/item3/<política>/
+# Corre UNA política del ítem 3 con el protocolo fijo y deja la evidencia en evidencias/item_3/<política>/
 #
 #   bash herramientas/experimento_item3.sh fifo
 #   bash herramientas/experimento_item3.sh round_robin
@@ -20,7 +20,7 @@
 #   PASOS        10    pasos_interpolacion del broker
 #   ESCALON_S    0.5   separación entre el arranque de un cliente y el siguiente
 #   ARRANQUE_S   8     margen para que todos los `ros2 run` estén listos antes del primer envío
-#   SALIDA       evidencias/item3/<política>
+#   SALIDA       evidencias/item_3/<política>
 
 set -euo pipefail
 
@@ -43,7 +43,7 @@ DURACION_S="${DURACION_S:-3.0}"
 PASOS="${PASOS:-10}"
 ESCALON_S="${ESCALON_S:-0.5}"
 ARRANQUE_S="${ARRANQUE_S:-8}"
-SALIDA="${SALIDA:-$RAIZ/evidencias/item3/$POLITICA}"
+SALIDA="${SALIDA:-$RAIZ/evidencias/item_3/$POLITICA}"
 
 # 1. Comprobaciones previas
 command -v ros2 >/dev/null || { echo "ros2 no está en el PATH: source /opt/ros/humble/setup.bash" >&2; exit 1; }
@@ -157,5 +157,5 @@ python3 "$RAIZ/analisis/exportar_csv.py" "$SALIDA/bag" --salida "$SALIDA"
 echo
 echo "Listo: $SALIDA"
 echo "Cuando estén las dos políticas:"
-echo "  python3 analisis/metricas.py evidencias/item3/fifo/queue_state.csv \\"
-echo "      evidencias/item3/round_robin/queue_state.csv --salida evidencias/item3/comparacion_politicas.png"
+echo "  python3 analisis/metricas.py evidencias/item_3/fifo/queue_state.csv \\"
+echo "      evidencias/item_3/round_robin/queue_state.csv --salida evidencias/item_3/comparacion_politicas.png"

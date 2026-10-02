@@ -6,9 +6,9 @@ Asi que, el índice de inanición es la espera máxima del número MÁS BAJO."""
 
 """ - Uso: Solo un directorio por política, cada uno con los CSV que salen de exportar_csv.py
 
-    python3 metricas.py evidencias/item3/fifo/queue_state.csv \\
-                        evidencias/item3/round_robin/queue_state.csv \\
-                        --salida evidencias/item3/comparacion_politicas.png
+    python3 metricas.py evidencias/item_3/fifo/queue_state.csv \\
+                        evidencias/item_3/round_robin/queue_state.csv \\
+                        --salida evidencias/item_3/comparacion_politicas.png
 
     Junto a cada queue_state.csv se buscan, si existen:
         joint_states.csv: para detectar violaciones de exclusión mutua

@@ -1,6 +1,6 @@
 # Ítem 3 — Resultados (PLANTILLA: copiar a `resultados.md` y completar DESPUÉS de las corridas)
 
-Los valores salen de `python3 analisis/metricas.py evidencias/item3/fifo/queue_state.csv evidencias/item3/round_robin/queue_state.csv --salida evidencias/item3/comparacion_politicas.png`.
+Los valores salen de `python3 analisis/metricas.py evidencias/item_3/fifo/queue_state.csv evidencias/item_3/round_robin/queue_state.csv --salida evidencias/item_3/comparacion_politicas.png`.
 La columna «Predicho» se copia de `docs/diseño_previo.md` **sin cambiarla**.
 
 ## Condiciones de las corridas

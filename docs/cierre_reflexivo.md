@@ -1,7 +1,7 @@
 # Cierre reflexivo — ¿Qué política de cola llevaríamos a CapyTown y por qué?
 
 > **BORRADOR (máximo una página).** Los campos `[ ]` se completan con los resultados de las corridas
-> oficiales (`evidencias/item3/resultados.md`). No se cambia la predicción del documento de diseño previo.
+> oficiales (`evidencias/item_3/resultados.md`). No se cambia la predicción del documento de diseño previo.
 
 **Equipo:** `[ ]` · **Fecha:** `[ ]`
 

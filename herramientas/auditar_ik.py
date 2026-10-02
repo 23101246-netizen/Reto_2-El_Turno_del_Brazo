@@ -38,7 +38,7 @@ PUERTO = '/dev/ttyUSB0'
 BAUD = 1000000
 VELOCIDAD = 30          # 0..100 en pymycobot; baja a propósito
 ESPERA_S = 5.0          # Segundos de espera a que termine el movimiento
-RUTA_CSV = os.path.join(RAIZ, 'evidencias', 'item4', 'auditoria_ik.csv')
+RUTA_CSV = os.path.join(RAIZ, 'evidencias', 'item_4', 'auditoria_ik.csv')
 
 # Las primeras 16 columnas son las acordadas; el resto es información de apoyo
 COLUMNAS = [

@@ -9,7 +9,7 @@
 | Equipo n.º | `[ ]` (ROS_DOMAIN_ID = 42 + n.º) |
 | Integrantes | `[ ]`, `[ ]`, `[ ]`, `[ ]` |
 | Fecha del borrador | `[ ]` |
-| Fuente de la tabla | Manual del JetCobot (Yahboom): parámetros DH indicados en el manual |
+| Fuente de la tabla | Dimensiones de los eslabones medidas del manual del JetCobot (Yahboom); marcos y tabla deducidos en pizarra por el equipo |
 | Implementación | `src/arm_broker/arm_broker/fk.py` (`DH`, `fk_matriz`, `fk`) |
 
 ## 1. Convención
@@ -33,7 +33,13 @@ La posición del efector es la última columna: `(x, y, z) = T_0_6[0:3, 3]`.
 Unidades: longitudes en **mm**, ángulos en **rad** dentro del código (la tabla usa grados).
 El ángulo DH es `θ_i = q_i + offset_i`, donde `q_i` es la lectura articular del robot.
 
-## 2. Tabla DH (tomada del manual del JetCobot)
+## 2. Tabla DH (deducida por el equipo a partir de las medidas del manual)
+
+**Procedencia.** El manual del JetCobot se usó **solo para obtener las medidas** de las articulaciones y
+eslabones del robot. Luego, en pizarra, el equipo asignó un marco a cada articulación, calculó los
+vectores x, y, z (rotación) y la traslación entre marcos consecutivos, y de ahí obtuvo los parámetros
+`θ, d, a, α` que se colocaron en la tabla.
+
 
 | i | θ_i | d_i [mm] | a_i [mm] | α_i |
 |:-:|:---|---:|---:|---:|
@@ -59,10 +65,10 @@ DH = [
 
 ### Puntos a confirmar antes de firmar
 
-- [ ] **d5 = 75.55 mm.** Valor tomado del manual del JetCobot y usado en `fk.py`; confirmar
-      que tabla, esquema y código coinciden con el manual (una diferencia de 0.5 mm sería
+- [ ] **d5 = 75.55 mm.** Medida del manual usada en `fk.py`; confirmar
+      que tabla, esquema de pizarra y código coinciden con el manual (una diferencia de 0.5 mm sería
       irrelevante frente al criterio de 10 mm, pero el documento debe ser consistente).
-- [ ] **α4 = +90°.** Valor del manual, implementado en `fk.py`; confirmar contra la tabla del manual.
+- [ ] **α4 = +90°.** Sale del cálculo de rotación entre los marcos 3 y 4 en pizarra e implementado en `fk.py`; confirmar contra el esquema.
 - [ ] **Origen del marco {0}.** Definir con precisión el punto físico (eje de J1 a nivel de la
       base) desde donde se mide con regla.
 - [ ] **Punto del efector.** Definir qué punto de la pinza/flange representa `T_0_6` (con
@@ -70,8 +76,8 @@ DH = [
 
 ## 3. Esquema de marcos (a completar con el dibujo)
 
-Insertar aquí el diagrama de ejes `z_i`, `x_i` por articulación (el del manual del JetCobot,
-redibujado). Ayuda de lectura de la cadena, de la base al efector:
+Insertar aquí el diagrama de ejes `z_i`, `x_i` por articulación (el de la pizarra, pasado en
+limpio). Ayuda de lectura de la cadena, de la base al efector:
 
 ```
 {0} base ── d1 = 134.75 ─▶ J1 (giro vertical)

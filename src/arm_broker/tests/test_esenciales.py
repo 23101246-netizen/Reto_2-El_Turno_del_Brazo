@@ -7,7 +7,7 @@ Los ítems 3 y 4 tienen su parte sin robot en test_analisis.py y test_auditar_ik
 las 2 corridas del ítem 3 y la prueba física del ítem 4 necesitan el robot y no son pruebas unitarias
 
 Solo las esenciales:
-    cd src/arm_broker && python3 -m unittest discover -s test -p "test_esenciales.py" -v
+    cd src/arm_broker && python3 -m unittest discover -s tests -p "test_esenciales.py" -v
 """
 import os
 import random
