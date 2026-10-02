@@ -10,15 +10,79 @@
 | Commit de congelación | `[hash]` |
 | Firma y fecha | `[ ]` |
 
-## 1. Tabla DH (ítem 1)
+## 1. Tabla DH y predicción previa (ítem 1)
 
-Ver [`tabla_dh.md`](tabla_dh.md) (PDF: `tabla_dh.pdf`): tabla, convención, puntos a confirmar y
-predicciones de las tres poses.
+### 1.1 Convención y tabla DH
+
+Denavit-Hartenberg **estándar**: `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, con
+`θ_i = q_i + offset_i` y `T_0_6 = A1·A2·A3·A4·A5·A6`; la posición del efector es la última columna de
+`T_0_6`. Longitudes en mm, ángulos en rad dentro del código. Medidas de los eslabones tomadas del manual del JetCobot (Yahboom); los marcos y la tabla se
+dedujeron en pizarra con los vectores x, y, z (rotación y traslación) de cada articulación. Implementada en `src/arm_broker/arm_broker/fk.py`:
+
+| i | θ_i | d_i [mm] | a_i [mm] | α_i |
+|:-:|:---|---:|---:|---:|
+| 1 | q1 | 134.75 | 0 | +90° |
+| 2 | q2 − 90° | 0 | −110 | 0° |
+| 3 | q3 | 0 | −96 | 0° |
+| 4 | q4 − 90° | 63.4 | 0 | +90° |
+| 5 | q5 + 90° | 75.55 | 0 | −90° |
+| 6 | q6 | 50 | 0 | 0° |
+
+Detalle (marcos, límites articulares, workspace y puntos por confirmar) en [`tabla_dh.md`](tabla_dh.md).
+
+### 1.2 Predicción previa de las 3 poses
+
+Se declaró **antes de medir**, calculada con `fk.fk(q)` para el `q` comandado. Se probaron 4 poses y se
+usan las 3 primeras (`cero`, `ready`, `girada`):
+
+| Pose | q comandado [rad] | x_pred [mm] | y_pred [mm] | z_pred [mm] |
+|---|---|---:|---:|---:|
+| `cero` | [0, 0, 0, 0, 0, 0] | 50.00 | −63.40 | 416.30 |
+| `ready` | [0, −0.5, 0.5, 0, 0.5, 0] | 96.62 | −39.43 | 402.83 |
+| `girada` | [0.6, −0.4, 0.4, 0, 0.3, 0] | 102.23 | 11.03 | 407.62 |
+
+Congelada en `evidencias/item1/predicciones_antes_de_medir.txt` (commit `a0cbc35`, 2026-09-30 20:10, hora
+de Lima), anterior a la validación en el robot (`84e9f1a`, 21:01). **Criterio de aceptación:** error de
+posición ≤ 10 mm en las tres poses. Procedimiento: se lee el `q` realmente adoptado (`get_angles()`), se
+calcula `FK(q_real)` y se compara con la posición que reporta el robot (`get_coords()`). Los resultados
+(5.8, 5.9 y 5.9 mm) están en `tabla_dh.md` §6 y en el README.
 
 ## 2. Diagrama de secuencia (ítem 2)
 
-`[pendiente]` Camino de un goal: cliente → `goal_callback` (admisión con FK) →
-`handle_accepted_callback` (encolado) → worker (política) → `execute_callback` → `/joint_states`.
+Camino de un goal: cliente → `goal_callback` (admisión con FK) → `handle_accepted_callback`
+(encolado) → worker (política) → `execute_callback` → `/joint_states`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Cliente
+    participant A as ActionServer move_arm
+    participant Q as Cola + política (FIFO/RR)
+    participant W as Worker único
+    participant J as /joint_states (JetCobot)
+    C->>A: send_goal(q_objetivo)
+    A->>A: goal_callback: límites, workspace (FK), paso, cupo
+    alt goal inválido
+        A-->>C: REJECT (motivo) + registro en rechazos.csv
+    else goal válido
+        A-->>C: ACCEPT (reserva cupo)
+        A->>Q: handle_accepted_callback: encola Pedido (no ejecuta)
+    end
+    loop cada 20 ms
+        W->>Q: política.siguiente()
+    end
+    W->>A: goal_handle.execute()
+    A->>A: execute_callback: revalida el paso
+    loop interpolación
+        A->>J: publica q
+        A-->>C: feedback EXECUTING
+    end
+    A-->>C: Result(success, wait_time_s, exec_time_s)
+    A->>W: pedido.fin (libera el brazo)
+    Note over A,C: /arm/queue_state a 5 Hz
+```
+
+*Mermaid se renderiza en GitHub; el PDF muestra el código porque no se pudo generar la imagen.*
 
 ## 3. Ítem 3 — Medición bajo contención: FIFO frente a Round Robin
 
@@ -125,7 +189,7 @@ Amenazas a la validez y cómo se atienden:
 
 ```
 evidencias/
-└── item3/
+└── item_3/
     ├── fifo/
     │   ├── bag/                       (ros2 bag: /arm/queue_state y /joint_states)
     │   ├── queue_state.csv
@@ -142,7 +206,7 @@ evidencias/
 
 Ensayo previo con ROS 2 (traza provisional): [`ensayo_previo_ros2.md`](ensayo_previo_ros2.md).
 
-Corrida oficial (una por política; el script deja todo en `evidencias/item3/<política>/`):
+Corrida oficial (una por política; el script deja todo en `evidencias/item_3/<política>/`):
 
 ```bash
 source /opt/ros/humble/setup.bash && source install/setup.bash
@@ -151,9 +215,9 @@ export ROS_DOMAIN_ID=<42 + n.º de equipo>
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh fifo
 TRAZA=/ruta/traza_oficial.csv bash herramientas/experimento_item3.sh round_robin
 
-python3 analisis/metricas.py evidencias/item3/fifo/queue_state.csv \
-    evidencias/item3/round_robin/queue_state.csv \
-    --salida evidencias/item3/comparacion_politicas.png
+python3 analisis/metricas.py evidencias/item_3/fifo/queue_state.csv \
+    evidencias/item_3/round_robin/queue_state.csv \
+    --salida evidencias/item_3/comparacion_politicas.png
 ```
 
 Si los clientes corren en Raspberry distintas, se lanzan a mano con el mismo `inicio_unix` (un
@@ -169,7 +233,7 @@ mismo instante en segundos Unix, con relojes sincronizados por NTP) y los parám
 
 ### 3.7 Plantilla de resultados
 
-[`evidencias/item3/resultados_plantilla.md`](../evidencias/item3/resultados_plantilla.md): métricas predichas y
+[`evidencias/item_3/resultados_plantilla.md`](../evidencias/item_3/resultados_plantilla.md): métricas predichas y
 medidas lado a lado, y contraste punto por punto con esta predicción.
 
 ## 4. Cierre reflexivo
