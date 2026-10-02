@@ -16,8 +16,8 @@
 
 Denavit-Hartenberg **estándar**: `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, con
 `θ_i = q_i + offset_i` y `T_0_6 = A1·A2·A3·A4·A5·A6`; la posición del efector es la última columna de
-`T_0_6`. Longitudes en mm, ángulos en rad dentro del código. Tabla deducida en pizarra por el equipo e
-implementada en `src/arm_broker/arm_broker/fk.py`:
+`T_0_6`. Longitudes en mm, ángulos en rad dentro del código. Parámetros tomados del manual del JetCobot (Yahboom) e
+implementados en `src/arm_broker/arm_broker/fk.py`:
 
 | i | θ_i | d_i [mm] | a_i [mm] | α_i |
 |:-:|:---|---:|---:|---:|
@@ -49,8 +49,40 @@ calcula `FK(q_real)` y se compara con la posición que reporta el robot (`get_co
 
 ## 2. Diagrama de secuencia (ítem 2)
 
-`[pendiente]` Camino de un goal: cliente → `goal_callback` (admisión con FK) →
-`handle_accepted_callback` (encolado) → worker (política) → `execute_callback` → `/joint_states`.
+Camino de un goal: cliente → `goal_callback` (admisión con FK) → `handle_accepted_callback`
+(encolado) → worker (política) → `execute_callback` → `/joint_states`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Cliente
+    participant A as ActionServer move_arm
+    participant Q as Cola + política (FIFO/RR)
+    participant W as Worker único
+    participant J as /joint_states (JetCobot)
+    C->>A: send_goal(q_objetivo)
+    A->>A: goal_callback: límites, workspace (FK), paso, cupo
+    alt goal inválido
+        A-->>C: REJECT (motivo) + registro en rechazos.csv
+    else goal válido
+        A-->>C: ACCEPT (reserva cupo)
+        A->>Q: handle_accepted_callback: encola Pedido (no ejecuta)
+    end
+    loop cada 20 ms
+        W->>Q: política.siguiente()
+    end
+    W->>A: goal_handle.execute()
+    A->>A: execute_callback: revalida el paso
+    loop interpolación
+        A->>J: publica q
+        A-->>C: feedback EXECUTING
+    end
+    A-->>C: Result(success, wait_time_s, exec_time_s)
+    A->>W: pedido.fin (libera el brazo)
+    Note over A,C: /arm/queue_state a 5 Hz
+```
+
+*Mermaid se renderiza en GitHub; el PDF muestra el código porque no se pudo generar la imagen.*
 
 ## 3. Ítem 3 — Medición bajo contención: FIFO frente a Round Robin
 

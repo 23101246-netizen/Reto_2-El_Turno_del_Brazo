@@ -6,6 +6,20 @@ Cuatro clientes, un solo brazo. Ningún cliente publica en `/joint_states`: solo
 nodo `arm_broker` (en el Jetson) habla con el driver. El broker recibe goals por una acción,
 los admite o rechaza con la FK, los encola según una política y los ejecuta de a uno.
 
+```mermaid
+flowchart LR
+    CL[Clientes 1..4] -->|goal move_arm| GC{goal_callback<br/>admisión con FK}
+    GC -->|inválido| RJ[REJECT + rechazos.csv]
+    GC -->|válido| HA[handle_accepted_callback<br/>encola]
+    HA --> Q[Cola + política<br/>FIFO / Round Robin]
+    Q --> W[Worker único<br/>exclusión mutua]
+    W --> EX[execute_callback<br/>interpola y publica]
+    EX --> JS[/joint_states/] --> ROB[Driver / JetCobot]
+    Q -.->|/arm/queue_state 5 Hz| CL
+```
+
+Flujo inicial en ASCII (equivalente):
+
 ```
  cliente 1 ─┐
  cliente 2 ─┤  goals (acción move_arm)      ┌────────────────────────────┐
@@ -30,7 +44,7 @@ Actualizar esta tabla a medida que se avanza. Todo lo que no necesita el robot e
 
 ### Pendiente con el robot
 
-- [ ] Dudas menores de la tabla DH (`d5` 75.05 vs 75.55 mm, `α4`) y, si el docente exige una medición independiente con regla, repetir las 3 poses (la validación actual es contra `get_coords()`).
+- [ ] Dudas menores de la tabla DH (`d5` = 75.55 mm y `α4` a confirmar contra el manual) y, si el docente exige una medición independiente con regla, repetir las 3 poses (la validación actual es contra `get_coords()`).
 - [ ] Ensayo con ROS 2 (`docs/ensayo_previo_ros2.md`): ~5 Hz en `/arm/queue_state`, un solo publicador de `/joint_states`, cola con varios goals, `ros2 bag`, exportación y análisis.
 - [ ] Recalcular la predicción con la traza oficial, congelarla y firmar el diseño previo.
 - [ ] Las dos corridas oficiales (`experimento_item3.sh fifo` y `round_robin`) y `resultados.md`.
@@ -185,7 +199,7 @@ ros2 topic echo /arm/queue_state
 
 ### Tabla DH
 
-DH estándar, `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, `θ_i = q_i + offset_i`,
+Parámetros tomados del manual del JetCobot (Yahboom). DH estándar, `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, `θ_i = q_i + offset_i`,
 `T_0_6 = A1·…·A6`. Implementada en `fk.py`; justificación y marcos en
 [`docs/tabla_dh.md`](docs/tabla_dh.md) y [`docs/diseño_previo.md`](docs/diseño_previo.md).
 
@@ -438,7 +452,7 @@ resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del cod
 - [x] Paquetes `arm_broker` y `arm_broker_interfaces` en GitHub.
 - [x] README con instrucciones de ejecución (este archivo; quedan los campos `[completar]` del equipo).
 - [ ] Documento de diseño previo **firmado antes de medir**: tabla DH, diagrama de secuencia y
-      predicción del p95 por política (`docs/`; borrador listo, faltan firma y diagrama de secuencia).
+      predicción del p95 por política (`docs/`; borrador listo con diagrama de secuencia en Mermaid; falta la firma).
 - [ ] Bag, CSV y figura comparativa de las políticas (`evidencias/item3/`).
 - [x] Validación de las 3 poses del ítem 1 (`evidencias/item1/`).
 - [ ] Auditoría del ítem 4 (`evidencias/item4/auditoria_ik.csv`).
