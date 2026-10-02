@@ -82,9 +82,9 @@ rx_obj,ry_obj,rz_obj, velocidad, ex_mm,ey_mm,ez_mm, dif_fk_robot_mm
 | `e` grande, y `FK(q_real)` difiere de `get_coords()` con una diferencia casi constante | Desfase de marco o de la tabla DH (p. ej. `d5` 75.05 vs 75.55 mm, `d6`, el punto del efector), no un fallo de la IK |
 | `FK(q_real) ≈ objetivo` pero `get_coords()` difiere | `get_coords()` usa otro marco o herramienta que la FK |
 
-Nota: en una foto de la pizarra del equipo aparecen valores que, con `q` en grados, dan un error de
-FK de unos 17 mm. Si fueron una medición real, conviene revisar el marco de medición y `d6` **antes**
-de la sesión del ítem 4.
+Referencia del ítem 1: la FK propia queda a unos 5.8-5.9 mm de `get_coords()` con un desfase casi constante
+(≈ +5.5 mm en z). Por eso en el ítem 4 se espera que `dif_fk_robot_mm` ronde esos ~6 mm; si es mucho
+mayor, hay un problema de marco o de lectura, no de la IK.
 
 ## 6. Pregunta abierta de la semana 5
 

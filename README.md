@@ -22,7 +22,7 @@ Actualizar esta tabla a medida que se avanza. Todo lo que no necesita el robot e
 
 | Ítem | Contenido | Pts | Estado |
 |---|---|:-:|---|
-| 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | `fk.py` y tabla DH (`docs/tabla_dh.*`) listos · predicciones de 3 poses calculadas · **falta medir en el robot** |
+| 1 | Tabla DH + `fk(q)` + medición de 3 poses | 4 | **Hecho**: `fk.py`, tabla DH, predicción previa y validación en el robot; las 3 poses cumplen ≤ 10 mm (5.8, 5.9 y 5.9 mm) · evidencia en `evidencias/item1/` |
 | 2 | Broker: cola, exclusión mutua, admisión con FK | 5 + 3 | `broker.py` y `politicas.py` implementados (admisión con rechazos con motivo, cupo atómico, worker único, cancelación, revalidación del paso) y probados con ROS simulado · **falta probarlo en el Jetson**, el diagrama de secuencia y el registro de rechazos real |
 | 3 | Medición FIFO vs. Round Robin, bag + CSV + figura | 4 | Protocolo, predicción, script de corrida (`experimento_item3.sh`) y análisis (`metricas.py`) listos y probados con datos simulados · **faltan el ensayo con ROS 2 y las corridas oficiales** |
 | 4 | Objetivo cartesiano (`send_coords`) auditado con la FK | 2 | `auditar_ik.py`, CSV de evidencia y documento listos y probados sin robot · **falta la sesión con el robot** |
@@ -30,7 +30,7 @@ Actualizar esta tabla a medida que se avanza. Todo lo que no necesita el robot e
 
 ### Pendiente con el robot
 
-- [ ] Resolver las dudas de la tabla DH (`d5` 75.05 vs 75.55 mm, `α4`, origen y punto del efector) y medir las 3 poses del ítem 1 (predicción congelada antes).
+- [ ] Dudas menores de la tabla DH (`d5` 75.05 vs 75.55 mm, `α4`) y, si el docente exige una medición independiente con regla, repetir las 3 poses (la validación actual es contra `get_coords()`).
 - [ ] Ensayo con ROS 2 (`docs/ensayo_previo_ros2.md`): ~5 Hz en `/arm/queue_state`, un solo publicador de `/joint_states`, cola con varios goals, `ros2 bag`, exportación y análisis.
 - [ ] Recalcular la predicción con la traza oficial, congelarla y firmar el diseño previo.
 - [ ] Las dos corridas oficiales (`experimento_item3.sh fifo` y `round_robin`) y `resultados.md`.
@@ -73,7 +73,7 @@ es idéntica para todos los equipos. El trabajo propio del equipo está en:
 | `docs/ensayo_previo_ros2.md` | Paso a paso del ensayo con ROS 2 antes de las corridas oficiales |
 | `docs/item4_auditoria_ik.md` | Qué demuestra el ítem 4, tabla de evidencia y lista de verificación |
 | `docs/cierre_reflexivo.md` / `.pdf` | Borrador del cierre reflexivo |
-| `evidencias/` | `medición_fk.csv` (ítem 1), `item3/` (una carpeta por política, la figura y los resultados) e `item4/auditoria_ik.csv` |
+| `evidencias/` | `item1/` (predicción previa y validación de la FK), `medición_fk.csv` (encabezado), `item3/` (una carpeta por política, la figura y los resultados) e `item4/auditoria_ik.csv` |
 
 ## Reglas del reto y cómo las cubre el diseño
 
@@ -181,22 +181,53 @@ ros2 topic echo /arm/queue_state
 
 ## Ítem 1 — Cinemática directa
 
-1. La tabla DH y su justificación están en [`docs/tabla_dh.md`](docs/tabla_dh.md) (PDF en
-   `docs/tabla_dh.pdf`). La implementación está en `fk.py`; el código y la tabla deben coincidir.
-2. **Antes de medir**, se congelan las predicciones de 3 poses en un commit (`fk.fk(q)`), tal
-   como se documenta en la sección 5 del documento de diseño.
-3. Llevar el brazo a cada pose y **medir físicamente** con regla o cinta la posición del efector
-   respecto al origen del marco {0}. Registrar los resultados en `evidencias/medición_fk.csv`.
-4. Chequeo cruzado con el firmware, en el Jetson y con el puerto serie libre:
+**Resultado: las tres poses cumplen el criterio de error ≤ 10 mm (5.8, 5.9 y 5.9 mm).**
 
-   ```bash
-   python3 herramientas/verificar_fk.py              # mueve el brazo por las poses de prueba
-   python3 herramientas/verificar_fk.py --solo-leer  # solo compara donde está el brazo
-   ```
+### Tabla DH
 
-   Nota: esto compara contra `get_coords()` del firmware; **no reemplaza la medición física**
-   que exige el reto.
-5. **Criterio de aceptación:** error de posición ≤ 10 mm en las tres poses.
+DH estándar, `A_i = Rot_z(θ_i)·Trans_z(d_i)·Trans_x(a_i)·Rot_x(α_i)`, `θ_i = q_i + offset_i`,
+`T_0_6 = A1·…·A6`. Implementada en `fk.py`; justificación y marcos en
+[`docs/tabla_dh.md`](docs/tabla_dh.md) y [`docs/diseño_previo.md`](docs/diseño_previo.md).
+
+| i | θ_i | d_i [mm] | a_i [mm] | α_i |
+|:-:|:---|---:|---:|---:|
+| 1 | q1 | 134.75 | 0 | +90° |
+| 2 | q2 − 90° | 0 | −110 | 0° |
+| 3 | q3 | 0 | −96 | 0° |
+| 4 | q4 − 90° | 63.4 | 0 | +90° |
+| 5 | q5 + 90° | 75.55 | 0 | −90° |
+| 6 | q6 | 50 | 0 | 0° |
+
+### Poses, predicción previa, medición real y error
+
+Se probaron 4 poses; se usan **las 3 primeras** (`cero`, `ready`, `girada`). La predicción se declaró
+antes de medir (`evidencias/item1/predicciones_antes_de_medir.txt`, commit `a0cbc35`, anterior a la
+validación `84e9f1a`). La validación (`evidencias/item1/validacion_fk.txt`) lee el `q` que el brazo
+realmente adoptó (`get_angles()`), calcula `FK(q_real)` y lo compara con la posición que reporta el
+robot (`get_coords()`).
+
+| Pose | q comandado [rad] | Predicción previa [mm] | FK(q_real) [mm] | Robot, `get_coords()` [mm] | Error [mm] | ≤ 10 mm |
+|---|---|---|---|---|---:|:-:|
+| `cero` | [0, 0, 0, 0, 0, 0] | (50.00, −63.40, 416.30) | (55.9, −62.6, 414.6) | (54.4, −63.2, 409.1) | **5.8** | Sí |
+| `ready` | [0, −0.5, 0.5, 0, 0.5, 0] | (96.62, −39.43, 402.83) | (102.1, −38.6, 400.9) | (100.9, −40.5, 395.4) | **5.9** | Sí |
+| `girada` | [0.6, −0.4, 0.4, 0, 0.3, 0] | (102.23, 11.03, 407.62) | (108.4, 14.6, 404.4) | (108.2, 11.9, 399.0) | **5.9** | Sí |
+
+Error medio 5.9 mm, máximo 5.9 mm. **Conclusión: la FK propia cumple el criterio de ≤ 10 mm en las tres
+poses.** La cuarta pose probada (`baja`) dio 6.0 mm y no se cuenta.
+
+- El error es casi constante entre poses, sobre todo en z (`FK(q_real) − Robot` ≈ +5.5 mm), lo que es
+  compatible con un desfase de marco o de herramienta más que con un error en los `a_i`.
+- El brazo no llega exactamente al `q` comandado, por eso el error se mide con `q_real`. Si se
+  comparara la predicción declarada contra el robot saldría 8.4, 8.6 y 10.5 mm (`girada` pasaría de
+  10 mm); tenerlo presente en la sustentación.
+- «Robot» es lo que reporta el firmware con `get_coords()`, no una medición independiente con regla.
+
+### Cómo repetirlo
+
+```bash
+python3 herramientas/verificar_fk.py              # mueve el brazo por las poses de prueba (Jetson, puerto libre)
+python3 herramientas/verificar_fk.py --solo-leer  # solo compara donde está el brazo
+```
 
 ## Ítem 2 — Broker
 
@@ -409,8 +440,8 @@ resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del cod
 - [ ] Documento de diseño previo **firmado antes de medir**: tabla DH, diagrama de secuencia y
       predicción del p95 por política (`docs/`; borrador listo, faltan firma y diagrama de secuencia).
 - [ ] Bag, CSV y figura comparativa de las políticas (`evidencias/item3/`).
-- [ ] Medición de las 3 poses del ítem 1 (`evidencias/medición_fk.csv`) y auditoría del ítem 4
-      (`evidencias/item4/auditoria_ik.csv`).
+- [x] Validación de las 3 poses del ítem 1 (`evidencias/item1/`).
+- [ ] Auditoría del ítem 4 (`evidencias/item4/auditoria_ik.csv`).
 - [ ] Video de 3 minutos con los cuatro clientes en disputa y `/arm/queue_state` en pantalla.
 - [ ] Cierre reflexivo (máximo una página): ¿qué política llevarían a CapyTown y por qué? (`docs/cierre_reflexivo.*`; borrador listo).
 
@@ -418,7 +449,7 @@ resultado y la pregunta de la semana 5 (¿por qué esa solución y no la del cod
 
 | Criterio | Pts | Dónde se evidencia |
 |---|:-:|---|
-| FK correcta y verificada contra el robot real | 4 | `fk.py`, `docs/tabla_dh.*`, `evidencias/medición_fk.csv` |
+| FK correcta y verificada contra el robot real | 4 | `fk.py`, `docs/tabla_dh.*`, `evidencias/item1/` |
 | Broker: exclusión mutua y encolado correcto | 5 | `broker.py`, `politicas.py`, bag de `/joint_states` |
 | Admisión validada con FK y rechazos razonados | 3 | `goal_callback`, registro de rechazos |
 | Medición y comparación de políticas | 4 | `evidencias/`, figura comparativa |

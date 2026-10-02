@@ -1,7 +1,7 @@
 # Documento de diseño previo — Tabla DH del JetCobot (Ítem 1)
 
-> **Estado: BORRADOR.** Completar los campos `[ ... ]` y firmar antes de ejecutar las
-> mediciones. La predicción de cada pose se congela con un commit **anterior** a medir.
+> **Estado:** predicciones congeladas y validación del ítem 1 hecha (secciones 5 y 6). Quedan por
+> completar los campos `[ ... ]` y la firma.
 
 | Campo | Valor |
 |---|---|
@@ -102,34 +102,45 @@ Pose cero (q = 0): el brazo queda estirado hacia arriba; la FK da
 - [ ] Contrastar estos límites con la documentación de Yahboom/pymycobot antes de usarlos como
       criterio de rechazo.
 
-## 5. Predicciones (declarar ANTES de medir)
+## 5. Predicciones (declaradas ANTES de medir)
 
-Elegir **3 poses** cuya posición sea fácil de medir con regla o cinta (evitar la pose cero:
-el efector queda a >400 mm de altura). Predicción calculada con `fk.fk(q)`; poses candidatas
-de `herramientas/verificar_fk.py`:
+Se probaron 4 poses en el robot; para el ítem 1 se usan **las 3 primeras**: `cero`, `ready` y
+`girada` (la cuarta, `baja`, queda fuera). Predicción calculada con `fk.fk(q)` con el `q` comandado:
 
-| Pose | q [rad] | x_pred | y_pred | z_pred |
+| Pose | q comandado [rad] | x_pred [mm] | y_pred [mm] | z_pred [mm] |
 |---|---|---:|---:|---:|
-| `ready` | [0, −0.5, 0.5, 0, 0.5, 0] | 96.6 | −39.4 | 402.8 |
-| `girada` | [0.6, −0.4, 0.4, 0, 0.3, 0] | 102.2 | 11.0 | 407.6 |
-| `baja` | [0, −1.2, 1.2, 0, 0, 0] | 152.5 | −63.4 | 346.2 |
-| `cero` (referencia) | [0, 0, 0, 0, 0, 0] | 50.0 | −63.4 | 416.3 |
+| `cero` | [0, 0, 0, 0, 0, 0] | 50.00 | −63.40 | 416.30 |
+| `ready` | [0, −0.5, 0.5, 0, 0.5, 0] | 96.62 | −39.43 | 402.83 |
+| `girada` | [0.6, −0.4, 0.4, 0, 0.3, 0] | 102.23 | 11.03 | 407.62 |
 
-Valores en mm. **Poses finales elegidas y congeladas:** `[ ]`, `[ ]`, `[ ]`
-(commit de congelación: `[hash]`).
+Congeladas en `evidencias/item1/predicciones_antes_de_medir.txt`, commit `a0cbc35`
+(2026-09-30 20:10, hora de Lima), **anterior** al registro de la validación (`84e9f1a`, 21:01).
 
-## 6. Resultados de la medición (rellenar después)
+## 6. Resultados de la medición
 
-Los datos crudos van en `evidencias/medición_fk.csv`. Resumen:
+Datos en `evidencias/item1/validacion_fk.txt`. Para cada pose se lee el `q` que el brazo realmente
+adoptó (`get_angles()`, que no coincide exactamente con el comandado), se calcula `FK(q_real)` y se
+compara con la posición que reporta el robot (`get_coords()`). Criterio: error ≤ 10 mm.
 
-| Pose | Error de posición [mm] | ¿≤ 10 mm? |
-|---|---:|:-:|
-| `[ ]` | `[ ]` | `[ ]` |
-| `[ ]` | `[ ]` | `[ ]` |
-| `[ ]` | `[ ]` | `[ ]` |
+| Pose | FK(q_real) [mm] | Robot, `get_coords()` [mm] | Error [mm] | ¿≤ 10 mm? |
+|---|---|---|---:|:-:|
+| `cero` | (55.9, −62.6, 414.6) | (54.4, −63.2, 409.1) | **5.8** | Sí |
+| `ready` | (102.1, −38.6, 400.9) | (100.9, −40.5, 395.4) | **5.9** | Sí |
+| `girada` | (108.4, 14.6, 404.4) | (108.2, 11.9, 399.0) | **5.9** | Sí |
 
-Análisis del error (si es grande y constante → offset de marco o de `d6`; si crece con la
-distancia → revisar los `a_i`): `[ ]`
+Error medio de las 3 poses: 5.9 mm · error máximo: 5.9 mm. **Las tres cumplen el criterio de ≤ 10 mm.**
+(La cuarta pose probada, `baja`, dio 6.0 mm y no se cuenta.)
+
+**Análisis del error.** La diferencia `FK(q_real) − Robot` es casi la misma en las tres poses
+(≈ +1 mm en x, +0.6 a +2.7 mm en y, **≈ +5.5 mm en z**): un error constante, no uno que crezca con la
+distancia, lo que es compatible con un desfase de marco o de herramienta (por ejemplo `d1`, `d5` o `d6`) y
+no con un error en los `a_i`. Está dentro del criterio, pero es la primera cosa a revisar si hiciera falta
+bajar el error.
+
+**Nota sobre qué se compara.** El brazo no llega exactamente al `q` comandado. Si en lugar de `FK(q_real)`
+se comparara la **predicción declarada** (con el `q` comandado) contra el robot, el error sería
+8.4 mm (`cero`), 8.6 mm (`ready`) y 10.5 mm (`girada`). Por eso la validación se hace con `q_real`, que
+es lo que el brazo realmente adoptó; conviene tenerlo presente en la sustentación.
 
 ## 7. Firma
 

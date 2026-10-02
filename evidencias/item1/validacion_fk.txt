@@ -1,0 +1,30 @@
+
+ITEM 1 - VALIDACION FISICA DE CINEMATICA DIRECTA
+
+Pose: cero
+FK(q_real) = (55.9, -62.6, 414.6) mm
+Robot      = (54.4, -63.2, 409.1) mm
+Error      = 5.8 mm
+Estado     = OK
+
+Pose: ready
+FK(q_real) = (102.1, -38.6, 400.9) mm
+Robot      = (100.9, -40.5, 395.4) mm
+Error      = 5.9 mm
+Estado     = OK
+
+Pose: girada
+FK(q_real) = (108.4, 14.6, 404.4) mm
+Robot      = (108.2, 11.9, 399.0) mm
+Error      = 5.9 mm
+Estado     = OK
+
+Pose adicional: baja
+FK(q_real) = (160.2, -60.6, 342.1) mm
+Robot      = (159.0, -61.8, 336.4) mm
+Error      = 6.0 mm
+Estado     = OK
+
+Error medio = 5.9 mm
+Error maximo = 6.0 mm
+
